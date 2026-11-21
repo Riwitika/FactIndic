@@ -223,6 +223,11 @@ factindic/
 │   ├── sampling.py               # Deterministic reproducible sampling
 │   ├── serialization.py          # UTF-8 JSONL export and import
 │   ├── ui_helpers.py             # Streamlit helpers & audit parsers
+│   ├── verification/             # Multilingual NLI factuality verification
+│   │   ├── __init__.py           # Verification API exports
+│   │   ├── config.py             # NLIConfig dataclass
+│   │   ├── result.py             # NLIResult and NLILabel schemas
+│   │   └── nli.py                # XNLIVerifier (joeddav/xlm-roberta-large-xnli)
 │   ├── models/
 │   │   ├── __init__.py
 │   │   ├── base.py               # BaseLLMClient and GenerationResult
@@ -236,17 +241,19 @@ factindic/
 │       ├── base.py               # Abstract BaseDatasetLoader
 │       ├── xlsum.py              # XL-Sum loader (English & Hindi with streaming)
 │       └── fixture_loader.py     # Local fixture loader
-├── tests/                        # Comprehensive unit tests (59 tests)
+├── tests/                        # Comprehensive unit tests (schema, models, NLI)
 ├── scripts/
 │   ├── prepare_sample.py         # CLI entry point for data prep
 │   ├── verify_live_xlsum.py      # Strict live XL-Sum verification CLI
 │   ├── run_controlled_experiment.py # Phase 1 controlled generation runner
+│   ├── run_nli_smoke_test.py     # Optional live NLI verification smoke test
 │   ├── run_generation_experiment.py # Phase 2 generation runner
 │   └── run_demo_generation.py    # Phase 2.1 demo-only runner
 ├── docs/
 │   ├── research_scope.md         # Detailed experimental design & feasibility report
-│   └── human_annotation_guide.md # Annotation guidelines and FRANK error taxonomy
-├── requirements.txt              # Project dependencies (including streamlit)
+│   ├── human_annotation_guide.md # Annotation guidelines and FRANK error taxonomy
+│   └── nli_verification_guide.md # Multilingual NLI verification guide and architecture
+├── requirements.txt              # Project dependencies (including streamlit, transformers, torch)
 └── README.md                     # Setup, testing, and usage guide
 ```
 
