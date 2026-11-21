@@ -18,6 +18,13 @@ from factindic.verification.nli import (
     XNLIVerifier,
 )
 from factindic.verification.result import NLILabel, NLIResult
+from factindic.verification.sentence_verifier import (
+    SentenceLevelVerifier,
+    SentenceVerificationResult,
+    load_sentence_verification_results,
+    save_sentence_verification_results,
+    split_into_sentences,
+)
 
 __all__ = [
     "DocumentVerificationResult",
@@ -25,10 +32,15 @@ __all__ = [
     "NLILabel",
     "NLIResult",
     "SUPPORTED_VERIFICATION_LANGUAGES",
+    "SentenceLevelVerifier",
+    "SentenceVerificationResult",
     "VerificationDependencyError",
     "VerificationModelLoadError",
     "WholeDocumentVerifier",
     "XNLIVerifier",
     "load_document_verification_results",
+    "load_sentence_verification_results",
     "save_document_verification_results",
+    "save_sentence_verification_results",
+    "split_into_sentences",
 ]

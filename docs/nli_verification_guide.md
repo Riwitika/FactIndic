@@ -157,3 +157,46 @@ save_document_verification_results(
 2. **Sub-Claim Masking**: A high document-level entailment score does **not** prove that every single claim or sentence in the summary is accurate. Minor hallucinations, unsupported numerical figures, or fine-grained entity errors can be overshadowed when scored as an aggregated hypothesis.
 3. **Premise Length Asymmetry**: Full BBC news articles often exceed 512 tokens. While `truncation_strategy="only_first"` ensures the entire generated summary is retained, facts located deep in lengthy source articles may fall outside the model's active attention window.
 4. **No Arbitrary Factuality Scores**: FactIndic reports raw, normalized class probabilities (`entailment`, `neutral`, `contradiction`) without imposing heuristic weighted composite scores that disguise model uncertainty.
+
+---
+
+## 9. Sentence-Level NLI Verification Strategy
+
+FactIndic provides the `SentenceLevelVerifier` module (`factindic.verification.sentence_verifier`) to evaluate generated summaries at sentence granularity against the full source article.
+
+### Formulation
+- **Premise**: Entire source article (`GenerationRecord.source_text`).
+- **Hypothesis**: Individual summary sentence extracted via multilingual segmentation (`sentence_text`).
+- **Strategy Identifier**: `"sentence_level"`.
+
+### Multilingual Sentence Segmentation
+Summary texts are segmented into discrete sentences while respecting language-specific terminal punctuation:
+- **English**: Terminal punctuation (`.`, `!`, `?`) followed by whitespace.
+- **Hindi**: Native Devanagari purna viram (`।` U+0964), deergh viram (`॥` U+0965), and standard terminators (`?`, `!`, `.`) followed by whitespace.
+
+### Python Usage
+```python
+from factindic.generation import load_generation_records
+from factindic.verification import (
+    SentenceLevelVerifier,
+    save_sentence_verification_results,
+)
+
+# Load existing generated summaries (Prompt A / Prompt B)
+records = load_generation_records("data/generations/controlled_generation_results.jsonl")
+
+# Run sentence-level verification (preserves sentence order across all records)
+sent_verifier = SentenceLevelVerifier()
+sentence_results = sent_verifier.verify_records(records, batch_size=4)
+
+# Save sentence verification outputs separately, preserving original generation records
+save_sentence_verification_results(
+    sentence_results,
+    "data/generations/sentence_level_verification_results.jsonl",
+)
+```
+
+### Interpretation and Sub-Claim Limitations
+1. **Diagnostic Granularity**: Evaluating each sentence individually prevents whole-summary masking, isolating exactly which sentences in a multi-sentence summary are ungrounded or contradicted.
+2. **Compound Sentence Sub-Claims**: A high entailment probability for a single sentence does **not** guarantee that every atomic sub-claim within that sentence is true. Compound sentences containing conjunctions, subordinate clauses, or multiple predicates can combine supported claims with minor unsupported facts that the model fails to penalize.
+3. **No Synthetic Factuality Scores**: Probabilities are reported independently per sentence without inventing ad-hoc composite scores or claiming absolute factual ground truth.
