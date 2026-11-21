@@ -118,3 +118,42 @@ print(f"Entailment Prob: {result_hi.entailment_prob:.4f}")
 # Clean up memory when done
 verifier.unload_model()
 ```
+
+---
+
+## 8. Whole-Document NLI Verification Strategy
+
+FactIndic provides the `WholeDocumentVerifier` module (`factindic.verification.document_verifier`) to evaluate full generated summaries against complete source articles.
+
+### Formulation
+- **Premise**: Entire source article (`GenerationRecord.source_text`).
+- **Hypothesis**: Entire generated summary (`GenerationRecord.generated_summary`).
+- **Strategy Identifier**: `"whole_document"`.
+
+### Python Usage
+```python
+from factindic.generation import load_generation_records
+from factindic.verification import (
+    WholeDocumentVerifier,
+    save_document_verification_results,
+)
+
+# Load existing generated summaries (Prompt A / Prompt B)
+records = load_generation_records("data/generations/controlled_generation_results.jsonl")
+
+# Run verification (reuses single in-memory model across all records)
+doc_verifier = WholeDocumentVerifier()
+verification_results = doc_verifier.verify_records(records, batch_size=2)
+
+# Save verification outputs separately, preserving original generation records
+save_document_verification_results(
+    verification_results,
+    "data/generations/whole_document_verification_results.jsonl",
+)
+```
+
+### Interpretation and Limitations
+1. **Macro-Level Agreement**: Whole-document verification measures broad contextual entailment across the text pair. It assesses whether the central themes of the summary are substantiated by the article.
+2. **Sub-Claim Masking**: A high document-level entailment score does **not** prove that every single claim or sentence in the summary is accurate. Minor hallucinations, unsupported numerical figures, or fine-grained entity errors can be overshadowed when scored as an aggregated hypothesis.
+3. **Premise Length Asymmetry**: Full BBC news articles often exceed 512 tokens. While `truncation_strategy="only_first"` ensures the entire generated summary is retained, facts located deep in lengthy source articles may fall outside the model's active attention window.
+4. **No Arbitrary Factuality Scores**: FactIndic reports raw, normalized class probabilities (`entailment`, `neutral`, `contradiction`) without imposing heuristic weighted composite scores that disguise model uncertainty.

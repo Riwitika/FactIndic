@@ -5,6 +5,12 @@ and configuration for multilingual summarization verification.
 """
 
 from factindic.verification.config import NLIConfig
+from factindic.verification.document_verifier import (
+    DocumentVerificationResult,
+    WholeDocumentVerifier,
+    load_document_verification_results,
+    save_document_verification_results,
+)
 from factindic.verification.nli import (
     SUPPORTED_VERIFICATION_LANGUAGES,
     VerificationDependencyError,
@@ -14,11 +20,15 @@ from factindic.verification.nli import (
 from factindic.verification.result import NLILabel, NLIResult
 
 __all__ = [
+    "DocumentVerificationResult",
     "NLIConfig",
     "NLILabel",
     "NLIResult",
     "SUPPORTED_VERIFICATION_LANGUAGES",
     "VerificationDependencyError",
     "VerificationModelLoadError",
+    "WholeDocumentVerifier",
     "XNLIVerifier",
+    "load_document_verification_results",
+    "save_document_verification_results",
 ]
