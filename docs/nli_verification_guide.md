@@ -324,3 +324,83 @@ save_evidence_results(
 > - A passage may share high lexical overlap with a claim while directly contradicting it (e.g. negation or inverted numbers).
 > - High retrieval relevance indicates that the passage is a plausible candidate premise for downstream NLI verification, but does **not** prove the claim is factually true.
 > - If no passage exhibits lexical overlap or the article is empty, the retriever assigns `retrieval_status="NO_EVIDENCE"` without hallucinating synthetic content.
+
+---
+
+## 12. Hybrid Claim-Level NLI Verification Pipeline
+
+FactIndic provides the `HybridClaimVerifier` module (`factindic.verification.claim_verifier`) to unify atomic claim extraction, local lexical evidence retrieval, and multilingual NLI classification into a fine-grained, evidence-grounded verification pipeline.
+
+### Architectural Pipeline Formulation
+The hybrid claim verification workflow operates in three connected stages:
+1. **Atomic Claim Extraction (`claim_extractor.py`)**: Decomposes summary sentences into standalone, independently verifiable atomic claims.
+2. **Local Evidence Retrieval (`evidence_retriever.py`)**: Identifies the top-$k$ ranked evidence passages from the original source article via BM25Okapi, recording exact character offsets.
+3. **Evidence-to-Claim NLI Evaluation (`claim_verifier.py`)**: Formulates an NLI inference pair where:
+   - **Premise ($P$)**: Candidate evidence passage from the source article.
+   - **Hypothesis ($H$)**: Standalone atomic claim.
+   - Evaluated by `XNLIVerifier` (`joeddav/xlm-roberta-large-xnli`).
+
+$$\text{NLI Pair} = \text{<s> Evidence Passage </s></s> Atomic Claim </s>}$$
+
+### Structured Output Schema (`ClaimVerificationResult`)
+| Field | Type | Description |
+|---|---|---|
+| `record_id` | `str` | Originating generation record identifier |
+| `claim_id` | `str` | Unique atomic claim identifier (`{record_id}_s{sentence_index}_c{claim_index}`) |
+| `original_sentence_index`| `int` | Position of originating sentence in summary |
+| `original_sentence_text` | `str` | Complete text of originating summary sentence |
+| `atomic_claim_text` | `str` | Standalone atomic claim text evaluated as hypothesis |
+| `evidence_passage` | `str` | Retrieved evidence passage evaluated as premise |
+| `evidence_start_offset` | `int` | Start character index in the source article |
+| `evidence_end_offset` | `int` | End character index (exclusive) in the source article |
+| `evidence_rank` | `int` | BM25 retrieval rank of evidence (1 to $k$) |
+| `evidence_score` | `float` | BM25 lexical relevance score |
+| `language` | `str` | Language code (`en` or `hi`) |
+| `predicted_label` | `str` | Predicted NLI label (`entailment`, `neutral`, `contradiction`, or `error`) |
+| `entailment_prob` | `float` | Normalized probability of entailment |
+| `neutral_prob` | `float` | Normalized probability of neutral/unsupported |
+| `contradiction_prob` | `float` | Normalized probability of contradiction |
+| `model_id` | `str` | Hugging Face model identifier |
+| `latency_ms` | `float` | NLI inference latency in milliseconds |
+| `verification_strategy` | `str` | Constant `hybrid_claim_level` |
+| `status` | `str` | Execution status: `SUCCESS`, `NO_EVIDENCE`, or `FAILED` |
+| `error_message` | `Optional[str]`| Error details if retrieval or inference encountered an issue |
+| `verification_timestamp_utc` | `str` | Execution timestamp in ISO format |
+
+### Python Usage
+```python
+from factindic.generation import load_generation_records
+from factindic.verification import (
+    HybridClaimVerifier,
+    load_extracted_claims,
+    save_claim_verification_results,
+)
+
+# Load existing generation records and extracted claims
+records = load_generation_records("data/generations/controlled_generation_results.jsonl")
+claims = load_extracted_claims("data/generations/extracted_claims.jsonl")
+
+# Initialize hybrid claim verifier (lazily loads XNLIVerifier on CPU)
+verifier = HybridClaimVerifier(top_k_evidence=2)
+
+# Verify claims across records using batched NLI inference
+verification_results = verifier.verify_records(
+    records=records,
+    claims=claims,
+    batch_size=16,
+)
+
+# Save hybrid verification results separately to JSONL
+save_claim_verification_results(
+    verification_results,
+    "data/generations/claim_verification_results.jsonl",
+)
+```
+
+### Interpretation & Epistemic Limitations
+> [!IMPORTANT]
+> **Critical Epistemic Safeguards:**
+> 1. **No Conflation with Lexical Overlap**: A claim is never considered supported merely because BM25 located a passage. The NLI model must independently infer semantic entailment from that passage.
+> 2. **Passage-Bounded Consistency**: High entailment probability indicates that the candidate evidence passage substantiates the claim. It does **not** prove real-world ground truth if the source article itself contains inaccuracies.
+> 3. **Explicit No-Evidence Status**: If no evidence passage shares lexical overlap with a claim (`NO_EVIDENCE`), the pipeline explicitly assigns neutral probabilities without generating synthetic text or attempting spurious inference.
+> 4. **No Combined Synthetic Scores**: Probabilities and labels are reported independently per evidence passage and claim to preserve diagnostic transparency.

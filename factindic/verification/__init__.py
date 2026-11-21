@@ -23,6 +23,12 @@ from factindic.verification.claim_extractor import (
     load_extracted_claims,
     save_extracted_claims,
 )
+from factindic.verification.claim_verifier import (
+    ClaimVerificationResult,
+    HybridClaimVerifier,
+    load_claim_verification_results,
+    save_claim_verification_results,
+)
 from factindic.verification.evidence_retriever import (
     BM25EvidenceRetriever,
     ClaimEvidenceResult,
@@ -45,9 +51,11 @@ __all__ = [
     "AtomicClaimExtractor",
     "BM25EvidenceRetriever",
     "ClaimEvidenceResult",
+    "ClaimVerificationResult",
     "DocumentVerificationResult",
     "EvidencePassage",
     "ExtractedClaim",
+    "HybridClaimVerifier",
     "NLIConfig",
     "NLILabel",
     "NLIResult",
@@ -58,10 +66,12 @@ __all__ = [
     "VerificationModelLoadError",
     "WholeDocumentVerifier",
     "XNLIVerifier",
+    "load_claim_verification_results",
     "load_document_verification_results",
     "load_evidence_results",
     "load_extracted_claims",
     "load_sentence_verification_results",
+    "save_claim_verification_results",
     "save_document_verification_results",
     "save_evidence_results",
     "save_extracted_claims",
