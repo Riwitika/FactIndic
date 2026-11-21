@@ -200,3 +200,60 @@ save_sentence_verification_results(
 1. **Diagnostic Granularity**: Evaluating each sentence individually prevents whole-summary masking, isolating exactly which sentences in a multi-sentence summary are ungrounded or contradicted.
 2. **Compound Sentence Sub-Claims**: A high entailment probability for a single sentence does **not** guarantee that every atomic sub-claim within that sentence is true. Compound sentences containing conjunctions, subordinate clauses, or multiple predicates can combine supported claims with minor unsupported facts that the model fails to penalize.
 3. **No Synthetic Factuality Scores**: Probabilities are reported independently per sentence without inventing ad-hoc composite scores or claiming absolute factual ground truth.
+
+---
+
+## 10. Atomic Claim Extraction Strategy
+
+FactIndic provides the `AtomicClaimExtractor` module (`factindic.verification.claim_extractor`) to decompose generated summary sentences into standalone, indivisible factual claims before evidence retrieval or verification.
+
+### Motivation and Granularity
+While sentence-level verification isolates ungrounded sentences, sentences in abstractive summaries are frequently compound or complex (e.g. *"The agency launched the mission on Friday and confirmed it reached lunar orbit on Sunday"* contains two distinct factual claims). Claim extraction breaks compound sentences into independent atomic claims:
+1. *"The agency launched the mission on Friday."*
+2. *"The agency confirmed the mission reached lunar orbit on Sunday."*
+
+### Structured Output Schema (`ExtractedClaim`)
+- **`record_id`**: Originating generation record identifier.
+- **`language`**: Target language (`en` or `hi`).
+- **`original_sentence_index`**: Position of the sentence in the summary.
+- **`original_sentence_text`**: Full text of the source summary sentence.
+- **`claim_id`**: Traceable identifier formatted as `{record_id}_s{sentence_index}_c{claim_index}`.
+- **`atomic_claim_text`**: Standalone, self-contained factual claim.
+- **`extraction_status`**: `"SUCCESS"` or `"FAILED"`.
+
+### Multilingual Support Without Translation
+Atomic claim extraction operates natively in both languages:
+- **English**: English prompt extracting English atomic claims.
+- **Hindi**: Native Devanagari prompt extracting Hindi atomic claims.
+No cross-lingual translation is performed, preserving the original lexical fidelity of the generation.
+
+### Python Usage
+```python
+from factindic.generation import load_generation_records
+from factindic.models.aya import CohereClient
+from factindic.verification import (
+    AtomicClaimExtractor,
+    save_extracted_claims,
+)
+
+# Load existing generated summaries
+records = load_generation_records("data/generations/controlled_generation_results.jsonl")
+
+# Configure extractor reusing existing Cohere Command A+ client
+client = CohereClient()
+extractor = AtomicClaimExtractor(client=client, temperature=0.0)
+
+# Extract claims across all records while preserving source GenerationRecord instances
+extracted_claims = extractor.extract_from_records(records)
+
+# Save extracted claims separately to JSONL
+save_extracted_claims(
+    extracted_claims,
+    "data/generations/extracted_claims.jsonl",
+)
+```
+
+### Limitations & Quality Safeguards
+1. **No Evidence Retrieval**: Claim extraction isolates claims; it does not verify them or retrieve evidence.
+2. **Context Resolution Bounds**: Pronouns and definite references are resolved within the local sentence context. Long-distance discourse co-reference across paragraphs is intentionally not inferred to prevent hallucinating external assumptions.
+3. **No Hallucinated Claims**: Prompts strictly prohibit adding external world knowledge or modifying the original factual meaning.
