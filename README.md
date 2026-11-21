@@ -8,16 +8,23 @@ This repository implements **Phase 1: Dataset Preparation, Validation, and Feasi
 
 ## 1. Research Scope & Experimental Design
 
-FactIndic evaluates a $2 \times 3$ factorial matrix across English and Hindi:
-- **Two Prompting Strategies:**
-  - **Prompt A (Standard):** Baseline abstractive summarization.
-  - **Prompt B (Factuality-Aware):** Constrained prompt instructing the model to remain faithful to the source and avoid ungrounded assertions.
-- **Three Factuality Verification Approaches:**
-  - **Approach 1 (Whole-Document NLI):** Complete article premise vs. complete summary hypothesis.
-  - **Approach 2 (Claim-Level NLI):** Summary decomposed into atomic propositions checked against retrieved source sentences.
-  - **Approach 3 (Hybrid Verification):** Claim-level NLI combined with targeted entity, quantity, date, and relation checks.
+FactIndic evaluates a $2 \times 3$ factorial matrix across English and Hindi using a unified, reproducible pipeline:
 
-Results for English and Hindi are evaluated and reported separately.
+| Condition | Prompting Strategy | Verification Strategy | Granularity & Formulation |
+|:---:|:---|:---|:---|
+| **C1** | **Prompt A (Standard)** | Whole-Document NLI | Premise: Source Article, Hypothesis: Entire Summary |
+| **C2** | **Prompt B (Factuality-Aware)** | Whole-Document NLI | Premise: Source Article, Hypothesis: Entire Summary |
+| **C3** | **Prompt A (Standard)** | Sentence-Level NLI | Premise: Source Article, Hypothesis: Summary Sentence |
+| **C4** | **Prompt B (Factuality-Aware)** | Sentence-Level NLI | Premise: Source Article, Hypothesis: Summary Sentence |
+| **C5** | **Prompt A (Standard)** | Hybrid Claim-Level NLI | Premise: BM25 Evidence Passage, Hypothesis: Atomic Claim |
+| **C6** | **Prompt B (Factuality-Aware)** | Hybrid Claim-Level NLI | Premise: BM25 Evidence Passage, Hypothesis: Atomic Claim |
+
+### Experimental Controls
+- **Source Invariance**: Identical source records are evaluated across all six conditions.
+- **Model Parity**: Cohere Command A+ (`command-a-plus-05-2026`) with identical sampling parameters (`temperature=0.3, max_new_tokens=256, top_p=0.9`).
+- **Multilingual Separation**: English and Hindi records are evaluated and reported separately.
+- **Verification Engine**: Multilingual XLM-RoBERTa Large XNLI (`joeddav/xlm-roberta-large-xnli`) running deterministically on CPU.
+- **Epistemic Bounds**: No synthetic composite scores; raw class probabilities and claim-level evidence rankings are preserved intact.
 
 ---
 

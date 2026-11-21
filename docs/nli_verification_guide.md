@@ -404,3 +404,48 @@ save_claim_verification_results(
 > 2. **Passage-Bounded Consistency**: High entailment probability indicates that the candidate evidence passage substantiates the claim. It does **not** prove real-world ground truth if the source article itself contains inaccuracies.
 > 3. **Explicit No-Evidence Status**: If no evidence passage shares lexical overlap with a claim (`NO_EVIDENCE`), the pipeline explicitly assigns neutral probabilities without generating synthetic text or attempting spurious inference.
 > 4. **No Combined Synthetic Scores**: Probabilities and labels are reported independently per evidence passage and claim to preserve diagnostic transparency.
+
+---
+
+## 13. Unified Six-Condition Experiment Pipeline
+
+The `UnifiedExperimentRunner` (`factindic.experiment_runner`) integrates the full generation and verification matrix across identical source articles under controlled conditions.
+
+### The Six Conditions Matrix
+| Condition | Prompt Strategy | Verification Strategy | Diagnostic Granularity |
+|:---:|:---|:---|:---|
+| **C1** | `prompt_a` (Standard) | `whole_document` | Macro consistency of entire summary against entire article |
+| **C2** | `prompt_b` (Factuality-Aware) | `whole_document` | Impact of prompt constraints at whole-summary level |
+| **C3** | `prompt_a` (Standard) | `sentence_level` | Sentence-by-sentence support against entire article |
+| **C4** | `prompt_b` (Factuality-Aware) | `sentence_level` | Sentence-by-sentence support under constrained prompting |
+| **C5** | `prompt_a` (Standard) | `hybrid_claim_level` | Atomic claims verified against BM25 retrieved passages |
+| **C6** | `prompt_b` (Factuality-Aware) | `hybrid_claim_level` | Fine-grained atomic claims under constrained prompting |
+
+### Methodological Controls & Resumption
+1. **Source Invariance**: Identical benchmark source articles are evaluated across all six conditions.
+2. **Generation Caching**: Model generation is executed once per prompt strategy (`prompt_a` is shared across C1, C3, and C5; `prompt_b` is shared across C2, C4, and C6) ensuring exact parameter parity.
+3. **Resumption Support**: If interrupted, the runner inspects existing JSONL outputs and skips already completed `(source_record_id, condition_id)` pairs without re-running API calls or duplicating data.
+4. **Isolated Output Artifacts**: Experiment results are written to separate output paths (e.g. `data/experiments/six_condition_experiment_results.jsonl`), preserving existing pilot artifacts untouched.
+
+### Python Usage
+```python
+from factindic.experiment_runner import (
+    UnifiedExperimentRunner,
+    load_experiment_records,
+)
+from factindic.serialization import load_jsonl
+
+# Load source benchmark records
+en_records = load_jsonl("data/benchmarks/xlsum_sample_english.jsonl")
+hi_records = load_jsonl("data/benchmarks/xlsum_sample_hindi.jsonl")
+
+# Initialize runner
+runner = UnifiedExperimentRunner(delay_seconds=0.5)
+
+# Execute across all six conditions with incremental persistence
+results = runner.run_all_conditions(
+    records=en_records + hi_records,
+    output_path="data/experiments/six_condition_results.jsonl",
+    resume=True,
+)
+```

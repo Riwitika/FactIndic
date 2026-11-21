@@ -12,17 +12,29 @@ from factindic.validation import (
 )
 from factindic.sampling import sample_records
 from factindic.serialization import load_jsonl, save_jsonl
+from factindic.experiment_runner import (
+    ConditionID,
+    ExperimentRecord,
+    UnifiedExperimentRunner,
+    load_experiment_records,
+    save_experiment_records,
+)
 
 __version__ = "0.1.0"
 
 __all__ = [
-    "FactIndicRecord",
+    "ConditionID",
     "DatasetStatistics",
-    "validate_record",
+    "ExperimentRecord",
+    "FactIndicRecord",
+    "UnifiedExperimentRunner",
     "clean_and_normalize_text",
-    "validate_dataset",
     "compute_dataset_statistics",
-    "sample_records",
+    "load_experiment_records",
     "load_jsonl",
+    "sample_records",
+    "save_experiment_records",
     "save_jsonl",
+    "validate_dataset",
+    "validate_record",
 ]
