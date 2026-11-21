@@ -140,6 +140,27 @@ python scripts/prepare_sample.py --language hi --split test --size 5
 python scripts/prepare_sample.py --language en --size 5 --fixture-test-mode-only
 ```
 
+### Full-Scale Benchmark Dataset Preparation
+For the complete six-condition evaluation pipeline, FactIndic provides `scripts/prepare_benchmark.py` to prepare a full-scale, deterministic evaluation benchmark:
+
+```bash
+# Prepare default 100 English + 100 Hindi records from XL-Sum test split (seed=42)
+python scripts/prepare_benchmark.py --en-size 100 --hi-size 100 --seed 42 --split test
+
+# Offline test mode using local fixtures
+python scripts/prepare_benchmark.py --en-size 10 --hi-size 10 --fixture-test-mode-only
+```
+
+#### Outputs & Provenance Audit
+- `data/benchmark/benchmark_en.jsonl`: Cleaned, validated, and deduplicated English benchmark records.
+- `data/benchmark/benchmark_hi.jsonl`: Cleaned, validated, and deduplicated Hindi benchmark records.
+- `data/benchmark/benchmark_audit.json`: Complete audit recording dataset commit SHAs, split, sampling seed (42), record IDs, validation statistics, and licensing attribution.
+
+#### Distinction Between Pilot and Full-Scale Benchmark
+- **Controlled Feasibility Pilot (`data/samples/`, `data/generations/controlled_generation_results.jsonl`)**: 10 source records (5 EN, 5 HI) generating 20 pilot summaries (Prompt A & B) to validate generation quality, API latency, and verification adapter sanity.
+- **Full-Scale Benchmark (`data/benchmark/`)**: 200 source records (100 EN, 100 HI) designed for robust statistical power across the six-condition evaluation matrix ($200 \times 6 = 1200$ condition evaluations).
+- **Licensing & Redistribution Precaution**: XL-Sum source articles are licensed under **CC BY-NC-SA 4.0** (BBC). In accordance with non-commercial redistribution policies, full-scale raw benchmark JSONL files are excluded from public Git tracking via `.gitignore`. Provenance, code, and audit metadata are fully version-controlled.
+
 ---
 
 ## 7. Real-Data Summary Generation (Phase 2)
