@@ -1,0 +1,70 @@
+{
+  "timestamp_start_utc": "2026-11-21T14:38:21.313192+00:00",
+  "timestamp_end_utc": "2026-11-21T14:39:48.282445+00:00",
+  "total_duration_seconds": 86.969,
+  "experiment_name": "FactIndic Controlled Summary Generation Experiment (Phase 1)",
+  "model_configuration": {
+    "provider": "cohere",
+    "model_id": "command-a-plus-05-2026",
+    "generation_parameters": {
+      "temperature": 0.3,
+      "max_new_tokens": 256,
+      "top_p": 0.9
+    },
+    "prompt_template_version": "v1.0"
+  },
+  "dataset_provenance": {
+    "repository": "csebuetnlp/xlsum",
+    "split": "test",
+    "english_sample_size": 5,
+    "hindi_sample_size": 5,
+    "total_source_articles": 10,
+    "english_record_ids": [
+      "uk-wales-33738390",
+      "uk-northern-ireland-54885209",
+      "world-europe-55173830",
+      "uk-england-cambridgeshire-22952135",
+      "world-latin-america-44779257"
+    ],
+    "hindi_record_ids": [
+      "international-50448073",
+      "060528_soldiers_desert",
+      "international-40883742",
+      "sport-42681773",
+      "131221_fake_vodka_aa"
+    ]
+  },
+  "expected_counts": {
+    "total_summaries": 20,
+    "english_total": 10,
+    "hindi_total": 10,
+    "prompt_a_total": 10,
+    "prompt_b_total": 10,
+    "english_prompt_a": 5,
+    "english_prompt_b": 5,
+    "hindi_prompt_a": 5,
+    "hindi_prompt_b": 5
+  },
+  "actual_counts": {
+    "english": {
+      "prompt_a_success": 5,
+      "prompt_a_failed": 0,
+      "prompt_b_success": 5,
+      "prompt_b_failed": 0
+    },
+    "hindi": {
+      "prompt_a_success": 5,
+      "prompt_a_failed": 0,
+      "prompt_b_success": 5,
+      "prompt_b_failed": 0
+    },
+    "prompt_a_total_success": 10,
+    "prompt_b_total_success": 10,
+    "total_success": 20,
+    "total_failed": 0
+  },
+  "validation_passed": true,
+  "validation_errors": [],
+  "results_file": "/Users/apple/Downloads/FactIndic/data/generations/controlled_generation_results.jsonl",
+  "audit_file": "/Users/apple/Downloads/FactIndic/data/generations/controlled_generation_audit.json"
+}
