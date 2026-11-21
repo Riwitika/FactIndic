@@ -1,0 +1,36 @@
+{
+  "timestamp_utc": "2026-11-21T11:18:45.909144+00:00",
+  "dataset_name": "csebuetnlp/xlsum",
+  "language": "hi",
+  "canonical_lang": "hi",
+  "split": "test",
+  "source_format": "parquet",
+  "branch": "refs/convert/parquet",
+  "commit_sha": "ab04842511fc357feae53281fd104aa3c36dff07",
+  "revision": "ab04842511fc357feae53281fd104aa3c36dff07",
+  "sample_size_requested": 5,
+  "sample_size_obtained": 5,
+  "total_split_records_loaded": 8847,
+  "sampling_seed": 42,
+  "provenance": "huggingface:csebuetnlp/xlsum:hi:test:parquet:ab04842511fc357feae53281fd104aa3c36dff07",
+  "is_fixture_data": false,
+  "record_ids": [
+    "xlsum_hi_international-50448073",
+    "xlsum_hi_060528_soldiers_desert",
+    "xlsum_hi_international-40883742",
+    "xlsum_hi_sport-42681773",
+    "xlsum_hi_131221_fake_vodka_aa"
+  ],
+  "statistics": {
+    "total_loaded": 8847,
+    "valid_count": 8847,
+    "invalid_count": 0,
+    "duplicate_count": 0,
+    "language_distribution": {
+      "hi": 8847
+    },
+    "invalid_reasons": {},
+    "average_source_length_chars": 2311.75,
+    "average_summary_length_chars": 137.25
+  }
+}

@@ -1,0 +1,8 @@
+# FactIndic: Factuality-Aware Summarization for Indic and Code-Mixed Languages
+# Phase 1: Dataset Preparation and Validation Requirements
+
+pytest>=8.0.0
+datasets>=2.14.0
+pandas>=2.0.0
+numpy>=1.24.0
+streamlit>=1.30.0

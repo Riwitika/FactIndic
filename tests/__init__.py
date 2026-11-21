@@ -1,0 +1,1 @@
+"""FactIndic test suite."""

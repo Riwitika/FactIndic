@@ -1,0 +1,36 @@
+{
+  "timestamp_utc": "2026-11-21T11:17:25.768126+00:00",
+  "dataset_name": "csebuetnlp/xlsum",
+  "language": "en",
+  "canonical_lang": "en",
+  "split": "test",
+  "source_format": "parquet",
+  "branch": "refs/convert/parquet",
+  "commit_sha": "ab04842511fc357feae53281fd104aa3c36dff07",
+  "revision": "ab04842511fc357feae53281fd104aa3c36dff07",
+  "sample_size_requested": 5,
+  "sample_size_obtained": 5,
+  "total_split_records_loaded": 11535,
+  "sampling_seed": 42,
+  "provenance": "huggingface:csebuetnlp/xlsum:en:test:parquet:ab04842511fc357feae53281fd104aa3c36dff07",
+  "is_fixture_data": false,
+  "record_ids": [
+    "xlsum_en_uk-wales-33738390",
+    "xlsum_en_uk-northern-ireland-54885209",
+    "xlsum_en_world-europe-55173830",
+    "xlsum_en_uk-england-cambridgeshire-22952135",
+    "xlsum_en_world-latin-america-44779257"
+  ],
+  "statistics": {
+    "total_loaded": 11535,
+    "valid_count": 11535,
+    "invalid_count": 0,
+    "duplicate_count": 0,
+    "language_distribution": {
+      "en": 11535
+    },
+    "invalid_reasons": {},
+    "average_source_length_chars": 2595.28,
+    "average_summary_length_chars": 125.85
+  }
+}

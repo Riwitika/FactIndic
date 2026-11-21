@@ -1,0 +1,108 @@
+{
+  "execution_timestamp_utc": "2026-10-21T18:42:10.216978+00:00",
+  "task": "FactIndic Phase 1.5 Strict Live XL-Sum Verification",
+  "dataset": "csebuetnlp/xlsum",
+  "split": "test",
+  "sample_size_per_language": 2,
+  "languages": {
+    "english": {
+      "dataset_repository": "csebuetnlp/xlsum",
+      "language_requested": "english",
+      "split_requested": "test",
+      "sample_size_requested": 2,
+      "retrieval_timestamp_utc": "2026-10-21T18:42:10.217947+00:00",
+      "verification_status": "PASSED",
+      "error": null,
+      "records_retrieved_count": 2,
+      "returned_field_names": [
+        "id",
+        "summary",
+        "text",
+        "title",
+        "url"
+      ],
+      "unique_record_id_count": 2,
+      "valid_count": 2,
+      "invalid_count": 0,
+      "records_audit": [
+        {
+          "index": 1,
+          "raw_id": "world-us-canada-38697908",
+          "example_id": "xlsum_en_world-us-canada-38697908",
+          "language": "en",
+          "title": "Trump inauguration speech: 'Angry', 'authentic', 'primal'",
+          "url": "https://www.bbc.com/news/world-us-canada-38697908",
+          "source_text_length_chars": 4072,
+          "summary_length_chars": 141,
+          "is_schema_valid": true,
+          "validation_reason": null
+        },
+        {
+          "index": 2,
+          "raw_id": "uk-wales-politics-48586353",
+          "example_id": "xlsum_en_uk-wales-politics-48586353",
+          "language": "en",
+          "title": "NHS Wales: Court action if trade deals affect service?",
+          "url": "https://www.bbc.com/news/uk-wales-politics-48586353",
+          "source_text_length_chars": 2437,
+          "summary_length_chars": 169,
+          "is_schema_valid": true,
+          "validation_reason": null
+        }
+      ],
+      "hf_config": "english",
+      "lang_alias": "en",
+      "elapsed_seconds": 9.08
+    },
+    "hindi": {
+      "dataset_repository": "csebuetnlp/xlsum",
+      "language_requested": "hindi",
+      "split_requested": "test",
+      "sample_size_requested": 2,
+      "retrieval_timestamp_utc": "2026-10-21T18:42:19.293394+00:00",
+      "verification_status": "PASSED",
+      "error": null,
+      "records_retrieved_count": 2,
+      "returned_field_names": [
+        "id",
+        "summary",
+        "text",
+        "title",
+        "url"
+      ],
+      "unique_record_id_count": 2,
+      "valid_count": 2,
+      "invalid_count": 0,
+      "records_audit": [
+        {
+          "index": 1,
+          "raw_id": "081027_sadhvi_test_pp",
+          "example_id": "xlsum_hi_081027_sadhvi_test_pp",
+          "language": "hi",
+          "title": "साध्वी का ब्रेन मैपिंग और नॉर्को टेस्ट",
+          "url": "https://www.bbc.com/hindi/regionalnews/story/2008/10/081027_sadhvi_test_pp",
+          "source_text_length_chars": 1088,
+          "summary_length_chars": 176,
+          "is_schema_valid": true,
+          "validation_reason": null
+        },
+        {
+          "index": 2,
+          "raw_id": "070929_pakistan_protest",
+          "example_id": "xlsum_hi_070929_pakistan_protest",
+          "language": "hi",
+          "title": "मुशर्रफ़ का पर्चा मंज़ूर, प्रदर्शनों पर लाठी",
+          "url": "https://www.bbc.com/hindi/regionalnews/story/2007/09/070929_pakistan_protest",
+          "source_text_length_chars": 2370,
+          "summary_length_chars": 257,
+          "is_schema_valid": true,
+          "validation_reason": null
+        }
+      ],
+      "hf_config": "hindi",
+      "lang_alias": "hi",
+      "elapsed_seconds": 80.77
+    }
+  },
+  "all_passed": true
+}
