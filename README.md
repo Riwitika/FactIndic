@@ -159,7 +159,22 @@ python scripts/prepare_benchmark.py --en-size 10 --hi-size 10 --fixture-test-mod
 #### Distinction Between Pilot and Full-Scale Benchmark
 - **Controlled Feasibility Pilot (`data/samples/`, `data/generations/controlled_generation_results.jsonl`)**: 10 source records (5 EN, 5 HI) generating 20 pilot summaries (Prompt A & B) to validate generation quality, API latency, and verification adapter sanity.
 - **Full-Scale Benchmark (`data/benchmark/`)**: 200 source records (100 EN, 100 HI) designed for robust statistical power across the six-condition evaluation matrix ($200 \times 6 = 1200$ condition evaluations).
-- **Licensing & Redistribution Precaution**: XL-Sum source articles are licensed under **CC BY-NC-SA 4.0** (BBC). In accordance with non-commercial redistribution policies, full-scale raw benchmark JSONL files are excluded from public Git tracking via `.gitignore`. Provenance, code, and audit metadata are fully version-controlled.
+- **Licensing & Redistribution Precaution**: XL-Sum source articles are licensed under **CC BY-NC-SA 4.0** (BBC). In accordance with non-commercial redistribution policies, full-scale raw benchmark JSONL files and generated summaries are excluded from public Git tracking via `.gitignore`. Provenance, code, and audit metadata are fully version-controlled.
+
+### Six-Condition Benchmark Experiment Execution
+To execute all six conditions across prepared benchmarks:
+
+```bash
+# Preflight checks & resource estimation (zero generation)
+python scripts/run_benchmark_experiment.py --preflight-only
+
+# Execute full evaluation pipeline with automatic resumption
+python scripts/run_benchmark_experiment.py \
+    --en-benchmark data/benchmark/benchmark_en.jsonl \
+    --hi-benchmark data/benchmark/benchmark_hi.jsonl \
+    --output-dir data/benchmark_results \
+    --delay 0.5
+```
 
 ---
 

@@ -55,3 +55,6 @@ data/generations/generation_experiment_audit.json
 
 # Full-scale benchmark dataset files (preserve redistribution boundaries)
 data/benchmark/*.jsonl
+
+# Benchmark results (generated summaries and raw article text)
+data/benchmark_results/*.jsonl
