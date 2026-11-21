@@ -23,6 +23,15 @@ from factindic.verification.claim_extractor import (
     load_extracted_claims,
     save_extracted_claims,
 )
+from factindic.verification.evidence_retriever import (
+    BM25EvidenceRetriever,
+    ClaimEvidenceResult,
+    EvidencePassage,
+    load_evidence_results,
+    save_evidence_results,
+    segment_article_into_passages,
+    tokenize_text,
+)
 from factindic.verification.result import NLILabel, NLIResult
 from factindic.verification.sentence_verifier import (
     SentenceLevelVerifier,
@@ -34,7 +43,10 @@ from factindic.verification.sentence_verifier import (
 
 __all__ = [
     "AtomicClaimExtractor",
+    "BM25EvidenceRetriever",
+    "ClaimEvidenceResult",
     "DocumentVerificationResult",
+    "EvidencePassage",
     "ExtractedClaim",
     "NLIConfig",
     "NLILabel",
@@ -47,10 +59,14 @@ __all__ = [
     "WholeDocumentVerifier",
     "XNLIVerifier",
     "load_document_verification_results",
+    "load_evidence_results",
     "load_extracted_claims",
     "load_sentence_verification_results",
     "save_document_verification_results",
+    "save_evidence_results",
     "save_extracted_claims",
     "save_sentence_verification_results",
+    "segment_article_into_passages",
     "split_into_sentences",
+    "tokenize_text",
 ]

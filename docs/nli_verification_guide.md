@@ -257,3 +257,70 @@ save_extracted_claims(
 1. **No Evidence Retrieval**: Claim extraction isolates claims; it does not verify them or retrieve evidence.
 2. **Context Resolution Bounds**: Pronouns and definite references are resolved within the local sentence context. Long-distance discourse co-reference across paragraphs is intentionally not inferred to prevent hallucinating external assumptions.
 3. **No Hallucinated Claims**: Prompts strictly prohibit adding external world knowledge or modifying the original factual meaning.
+
+---
+
+## 11. Claim-Level Evidence Retrieval
+
+FactIndic implements claim-level evidence retrieval (`factindic.verification.evidence_retriever`) to ground each extracted atomic claim in relevant passages from its original source article.
+
+### Grounding Principles & Source Boundedness
+- **Strictly Local Article Grounding**: Evidence is extracted **exclusively** from the original source article (`source_text`). No external web search, corpus-level indexing, or LLM-generated evidence is permitted.
+- **Multilingual Support Without Translation**: Operates natively in English and Hindi (Devanagari script) without translation.
+- **Lightweight CPU Execution**: Implements a self-contained, pure-Python BM25Okapi inverted index ($k_1=1.5, b=0.75$) with zero new external dependencies, optimized for resource-constrained environments (e.g. 2017 MacBook Air).
+- **Exact Provenance with Character Offsets**: Each retrieved passage includes exact `[evidence_start_offset, evidence_end_offset]` character positions mapping directly into the original article string (`source_text[start:end]`).
+
+### Structured Output Schema (`ClaimEvidenceResult`)
+| Field | Type | Description |
+|---|---|---|
+| `record_id` | `str` | Identifier of the originating generation record |
+| `claim_id` | `str` | Traceable identifier of the extracted atomic claim |
+| `original_claim_text` | `str` | Full text of the atomic claim being evaluated |
+| `evidence_passage` | `str` | Text of the retrieved evidence passage from the source article |
+| `evidence_start_offset` | `int` | Start character index in the source article |
+| `evidence_end_offset` | `int` | End character index (exclusive) in the source article |
+| `retrieval_rank` | `int` | 1-indexed retrieval rank (1 = most relevant) |
+| `relevance_score` | `float` | BM25 lexical similarity score |
+| `language` | `str` | Language code (`en` or `hi`) |
+| `retrieval_strategy` | `str` | Identifier of retrieval strategy (`bm25_lexical`) |
+| `retrieval_status` | `str` | `SUCCESS`, `NO_EVIDENCE`, or `FAILED` |
+| `error_message` | `Optional[str]` | Error details if retrieval failed |
+| `retrieval_timestamp_utc` | `str` | UTC timestamp in ISO format |
+
+### Python Usage
+```python
+from factindic.generation import load_generation_records
+from factindic.verification import (
+    BM25EvidenceRetriever,
+    load_extracted_claims,
+    save_evidence_results,
+)
+
+# Load existing generation records and extracted claims
+records = load_generation_records("data/generations/controlled_generation_results.jsonl")
+claims = load_extracted_claims("data/generations/extracted_claims.jsonl")
+
+# Initialize BM25 retriever
+retriever = BM25EvidenceRetriever(k1=1.5, b=0.75, min_score=0.0)
+
+# Retrieve top-3 evidence passages per claim across records
+evidence_results = retriever.retrieve_for_records(
+    records=records,
+    claims=claims,
+    top_k=3,
+)
+
+# Save evidence results separately to JSONL
+save_evidence_results(
+    evidence_results,
+    "data/generations/claim_evidence_results.jsonl",
+)
+```
+
+### Epistemic Bounds & Retrieval Caveats
+> [!WARNING]
+> **Lexical Overlap vs Semantic Entailment:**
+> BM25 relevance scores measure lexical and keyword co-occurrence, **not** semantic entailment or factual veracity.
+> - A passage may share high lexical overlap with a claim while directly contradicting it (e.g. negation or inverted numbers).
+> - High retrieval relevance indicates that the passage is a plausible candidate premise for downstream NLI verification, but does **not** prove the claim is factually true.
+> - If no passage exhibits lexical overlap or the article is empty, the retriever assigns `retrieval_status="NO_EVIDENCE"` without hallucinating synthetic content.
