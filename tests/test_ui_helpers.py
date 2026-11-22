@@ -150,3 +150,67 @@ def test_fetch_live_target_records_scans_beyond_25():
         found_capped_ids = [r.metadata.get("raw_id") for r in records_capped]
         assert target_id not in found_capped_ids
 
+
+def test_controlled_experiment_data_loaders():
+    """Verify loading of controlled experiment audit, summary table, and results."""
+    from factindic.ui_helpers import (
+        filter_experiment_records,
+        get_controlled_experiment_dir,
+        get_hybrid_claim_explorer_detail,
+        get_hybrid_claim_explorer_records,
+        get_qualitative_case_studies,
+        load_controlled_experiment_audit,
+        load_controlled_experiment_results,
+        load_controlled_experiment_summary_table,
+    )
+
+    exp_dir = get_controlled_experiment_dir()
+    assert exp_dir.exists()
+
+    audit = load_controlled_experiment_audit()
+    assert audit is not None
+    assert audit.get("nli_model_id") == "MoritzLaurer/mDeBERTa-v3-base-xnli-multilingual-nli-2mil7"
+    assert audit.get("results_summary", {}).get("total_evaluations") == 60
+
+    table = load_controlled_experiment_summary_table()
+    assert len(table) == 18
+    conds = {r["condition_id"] for r in table}
+    assert conds == {"C1", "C2", "C3", "C4", "C5", "C6"}
+
+    results = load_controlled_experiment_results()
+    assert len(results) == 60
+
+    # Test filtering
+    en_only = filter_experiment_records(results, language="en")
+    assert len(en_only) == 30
+    hi_only = filter_experiment_records(results, language="hi")
+    assert len(hi_only) == 30
+
+    c1_only = filter_experiment_records(results, prompt_strategy="prompt_a", verification_strategy="whole_document")
+    assert len(c1_only) == 10
+
+    # Test hybrid claim explorer
+    hybrid_records = get_hybrid_claim_explorer_records()
+    assert len(hybrid_records) == 20
+    assert all(r["verification_strategy"] == "hybrid_claim_level" for r in hybrid_records)
+
+    first_detail = get_hybrid_claim_explorer_detail(hybrid_records[0])
+    assert "claims" in first_detail
+    assert len(first_detail["claims"]) > 0
+    first_claim = first_detail["claims"][0]
+    assert "atomic_claim_text" in first_claim
+    assert "predicted_label" in first_claim
+    assert "passages" in first_claim
+    assert len(first_claim["passages"]) <= 3
+
+    # Test qualitative case studies
+    cases = get_qualitative_case_studies()
+    assert len(cases) == 5
+    case_ids = {c["case_id"] for c in cases}
+    assert "en_entailment" in case_ids
+    assert "en_contradiction" in case_ids
+    assert "hi_entailment" in case_ids
+    assert "hi_contradiction" in case_ids
+    assert "hi_scratchpad" in case_ids
+
+

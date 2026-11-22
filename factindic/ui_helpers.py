@@ -164,3 +164,213 @@ def get_pipeline_stages() -> List[Dict[str, Any]]:
             "implementation": "docs/human_annotation_guide.md",
         },
     ]
+
+
+# -----------------------------------------------------------------------------
+# Controlled Experiment Data Loaders (Local mDeBERTa)
+# -----------------------------------------------------------------------------
+
+def get_controlled_experiment_dir() -> Path:
+    """Return the filesystem path to the controlled experiment results directory."""
+    return DATA_DIR / "benchmark_results" / "controlled_run" / "local_mdeberta"
+
+
+def load_controlled_experiment_audit() -> Optional[Dict[str, Any]]:
+    """Load the machine-readable audit manifest for the controlled experiment."""
+    audit_file = get_controlled_experiment_dir() / "experiment_audit.json"
+    return load_audit_file(audit_file)
+
+
+def load_controlled_experiment_summary_table() -> List[Dict[str, Any]]:
+    """Load the machine-readable summary table for all conditions (C1–C6)."""
+    table_file = get_controlled_experiment_dir() / "experiment_summary_table.json"
+    if not table_file.is_file():
+        return []
+    try:
+        with open(table_file, "r", encoding="utf-8") as f:
+            data = json.load(f)
+            return data if isinstance(data, list) else []
+    except Exception:
+        return []
+
+
+def load_controlled_experiment_results() -> List[Dict[str, Any]]:
+    """Load the 60 machine-readable evaluation output records.
+
+    Returns:
+        List of parsed JSON objects, one per evaluation. Empty list if missing.
+    """
+    results_file = get_controlled_experiment_dir() / "experiment_results.jsonl"
+    if not results_file.is_file():
+        return []
+    records = []
+    try:
+        with open(results_file, "r", encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if line:
+                    records.append(json.loads(line))
+        return records
+    except Exception:
+        return []
+
+
+def filter_experiment_records(
+    records: List[Dict[str, Any]],
+    language: Optional[str] = None,
+    prompt_strategy: Optional[str] = None,
+    verification_strategy: Optional[str] = None,
+) -> List[Dict[str, Any]]:
+    """Filter experiment evaluation records by metadata attributes."""
+    filtered = records
+    if language and language.lower() not in ("all", ""):
+        target_lang = "hi" if language.lower() in ("hi", "hindi") else "en"
+        filtered = [r for r in filtered if r.get("language") == target_lang]
+    if prompt_strategy and prompt_strategy.lower() not in ("all", ""):
+        target_ps = prompt_strategy.lower()
+        if "prompt_a" in target_ps or target_ps == "a" or "standard" in target_ps:
+            filtered = [r for r in filtered if r.get("prompt_strategy") == "prompt_a"]
+        elif "prompt_b" in target_ps or target_ps == "b" or "factuality" in target_ps:
+            filtered = [r for r in filtered if r.get("prompt_strategy") == "prompt_b"]
+    if verification_strategy and verification_strategy.lower() not in ("all", ""):
+        target_vs = verification_strategy.lower()
+        if "whole" in target_vs:
+            filtered = [r for r in filtered if r.get("verification_strategy") == "whole_document"]
+        elif "sentence" in target_vs:
+            filtered = [r for r in filtered if r.get("verification_strategy") == "sentence_level"]
+        elif "hybrid" in target_vs or "claim" in target_vs:
+            filtered = [r for r in filtered if r.get("verification_strategy") == "hybrid_claim_level"]
+    return filtered
+
+
+def get_hybrid_claim_explorer_records() -> List[Dict[str, Any]]:
+    """Return all evaluation records using the hybrid claim-level strategy (C5 and C6)."""
+    all_recs = load_controlled_experiment_results()
+    return [r for r in all_recs if r.get("verification_strategy") == "hybrid_claim_level"]
+
+
+def get_hybrid_claim_explorer_detail(record: Dict[str, Any]) -> Dict[str, Any]:
+    """Structure claim-by-claim verification and retrieved evidence for a hybrid record.
+
+    Groups retrieved evidence passages by claim_id and pairs them with claim metadata.
+    Does NOT combine probabilities across different passages into a single distribution.
+    """
+    agg = record.get("aggregated_metrics", {})
+    claims_detail = agg.get("claims_detail", [])
+    raw_passages = record.get("verification_results", [])
+
+    # Group raw passages by claim_id
+    passages_by_claim: Dict[str, List[Dict[str, Any]]] = {}
+    for p in raw_passages:
+        cid = p.get("claim_id", "")
+        if cid:
+            passages_by_claim.setdefault(cid, []).append(p)
+
+    structured_claims = []
+    for cd in claims_detail:
+        cid = cd.get("claim_id", "")
+        passages = passages_by_claim.get(cid, [])
+        passages_sorted = sorted(passages, key=lambda x: int(x.get("evidence_rank", 99)))
+
+        structured_claims.append({
+            "claim_id": cid,
+            "sentence_index": cd.get("sentence_index", 0),
+            "atomic_claim_text": cd.get("atomic_claim_text", ""),
+            "predicted_label": cd.get("predicted_label", "neutral"),
+            "max_entailment_prob": cd.get("max_entailment_prob", 0.0),
+            "max_contradiction_prob": cd.get("max_contradiction_prob", 0.0),
+            "passages": passages_sorted,
+        })
+
+    return {
+        "condition_id": record.get("condition_id", ""),
+        "source_record_id": record.get("source_record_id", ""),
+        "language": record.get("language", "en"),
+        "prompt_strategy": record.get("prompt_strategy", ""),
+        "generated_summary": record.get("generated_summary", ""),
+        "verification_latency_ms": record.get("verification_latency_ms", 0.0),
+        "aggregated_metrics": agg,
+        "claims": structured_claims,
+    }
+
+
+def get_qualitative_case_studies() -> List[Dict[str, Any]]:
+    """Curated qualitative case studies extracted directly from experiment_results.jsonl."""
+    return [
+        {
+            "case_id": "en_entailment",
+            "title": "Case 1: English High-Entailment Claim Grounding",
+            "language": "English",
+            "condition_id": "C5",
+            "record_id": "world-latin-america-44779257",
+            "strategy": "hybrid_claim_level",
+            "claim_text": "35 killed in towns of Diriamba and Jinotepe, 3 in Matagalpa province.",
+            "retrieved_premise": "'Blood and death' Cenidh President Vilma Núñez told BBC Mundo that 35 people had been killed in the towns of Diriamba and Jinotepe, in Carazo province...",
+            "rank": 1,
+            "bm25_score": 14.82,
+            "probabilities": {"entailment": 0.5006, "neutral": 0.0160, "contradiction": 0.4834},
+            "assigned_label": "entailment",
+            "analysis": "The mDeBERTa cross-encoder successfully aligned numerical and geographical assertions across clauses. The existential grounding rule (max_k P(entailment) >= 0.50) correctly verified the claim.",
+        },
+        {
+            "case_id": "en_contradiction",
+            "title": "Case 2: English Premise-Mismatch Contradiction",
+            "language": "English",
+            "condition_id": "C6",
+            "record_id": "world-europe-55173830",
+            "strategy": "hybrid_claim_level",
+            "claim_text": "Customs officials at Cologne Bonn airport seized two packages containing 18 reptiles—including endangered horned lizards, alligator lizards and box turtles—destined for private buyers in Germany.",
+            "retrieved_premise": "The endangered horned lizards, alligator lizards and box turtles were destined for private buyers in Germany.",
+            "rank": 1,
+            "bm25_score": 13.91,
+            "probabilities": {"entailment": 0.0005, "neutral": 0.0604, "contradiction": 0.9391},
+            "assigned_label": "contradiction",
+            "analysis": "The retrieved premise stated the destination of the reptiles but omitted the seizure by customs officials at Cologne Bonn airport. Evaluated against this incomplete localized premise, mDeBERTa penalized the ungrounded compound clauses as a contradiction.",
+        },
+        {
+            "case_id": "hi_entailment",
+            "title": "Case 3: Hindi High-Entailment Semantic Paraphrase",
+            "language": "Hindi",
+            "condition_id": "C5",
+            "record_id": "sport-42681773",
+            "strategy": "hybrid_claim_level",
+            "claim_text": "दिल्ली के फ़िरोज़शाह कोटला में सैयद मुश्ताक अली ट्रॉफी मैच में हिमाचल प्रदेश के खिलाफ़ ऋषभ पंत ने धमाकेदार प्रदर्शन किया।",
+            "retrieved_premise": "20 साल के ऋषभ ने दिल्ली के फ़िरोज़शाह कोटला मैदान में दिल्ली की तरफ़ से खेलते हुए महज़ 32 गेंदों में शतक जड़ दिया.",
+            "rank": 1,
+            "bm25_score": 12.45,
+            "probabilities": {"entailment": 0.6096, "neutral": 0.0028, "contradiction": 0.3876},
+            "assigned_label": "entailment",
+            "analysis": "Despite lexical and stylistic rephrasing ('धमाकेदार प्रदर्शन' vs. 'महज़ 32 गेंदों में शतक जड़ दिया'), mDeBERTa recognized that scoring a century in 32 balls entails an explosive performance.",
+        },
+        {
+            "case_id": "hi_contradiction",
+            "title": "Case 4: Hindi Epistemic Divergence Contradiction",
+            "language": "Hindi",
+            "condition_id": "C5",
+            "record_id": "060528_soldiers_desert",
+            "strategy": "hybrid_claim_level",
+            "claim_text": "सैनिकों के प्रतिनिधियों ने पुष्टि की है कि इराक में तैनाती से बचने वाले सैनिकों की संख्या हाल के महीनों में बढ़ी है।",
+            "retrieved_premise": "कोर्ट मार्शल के दौरान सैनिकों का प्रतिनिधित्व करने वाले वकीलों ने स्वीकार किया है कि पिछले कुछ समय में उनके पास आने वाले...",
+            "rank": 1,
+            "bm25_score": 11.88,
+            "probabilities": {"entailment": 0.3708, "neutral": 0.0059, "contradiction": 0.7233},
+            "assigned_label": "contradiction",
+            "analysis": "The summary claimed that soldiers' representatives confirmed ('पुष्टि की है') an increase, whereas the source text reported that defense lawyers acknowledged ('स्वीकार किया है') receiving cases during court martials. mDeBERTa detected the subtle epistemic divergence.",
+        },
+        {
+            "case_id": "hi_scratchpad",
+            "title": "Case 5: Hindi Prompt B English Scratchpad / BM25 Mismatch",
+            "language": "Hindi (Code-Switched / Scratchpad)",
+            "condition_id": "C6",
+            "record_id": "international-50448073",
+            "strategy": "hybrid_claim_level",
+            "claim_text": "Demand: PM Imran Khan resign, new elections.",
+            "retrieved_premise": "विपक्षी पार्टियों के गठबंधन की तरफ से आज़ादी मार्च निकालने की घोषणा की गई थी...",
+            "rank": 1,
+            "bm25_score": 2.15,
+            "probabilities": {"entailment": 0.0001, "neutral": 0.9998, "contradiction": 0.0001},
+            "assigned_label": "neutral",
+            "analysis": "Observed evidence: The generator emitted English planning text ('Demand: PM Imran Khan resign') for a Hindi request. Proposed explanation: English tokens have minimal lexical overlap with Devanagari news articles, degrading BM25 retrieval and forcing mDeBERTa to output neutral.",
+        },
+    ]
+
