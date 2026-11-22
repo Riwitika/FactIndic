@@ -297,8 +297,13 @@ class BM25Index:
 
 def _get_record_id(record: Any, default_idx: int = 0) -> str:
     """Helper to extract record identifier from GenerationRecord or FactIndicRecord."""
+    if hasattr(record, "metadata") and isinstance(getattr(record, "metadata"), dict):
+        if "raw_id" in record.metadata and record.metadata["raw_id"]:
+            return str(record.metadata["raw_id"])
     if hasattr(record, "source_record_id") and getattr(record, "source_record_id"):
         return str(getattr(record, "source_record_id"))
+    if hasattr(record, "example_id") and getattr(record, "example_id"):
+        return str(getattr(record, "example_id"))
     if hasattr(record, "id") and getattr(record, "id"):
         return str(getattr(record, "id"))
     return f"record_{default_idx}"

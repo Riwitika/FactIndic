@@ -61,6 +61,7 @@ data/benchmark/*
 data/benchmark_results/
 
 # Response cache databases
+.cache/
 data/cache/
 *.db
 *.db-wal

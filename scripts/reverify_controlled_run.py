@@ -21,6 +21,13 @@ ROOT_DIR = Path(__file__).resolve().parent.parent
 if str(ROOT_DIR) not in sys.path:
     sys.path.insert(0, str(ROOT_DIR))
 
+# Ensure local cache directories to avoid sandbox permission errors
+os.environ.setdefault("TRANSFORMERS_NO_TF", "1")
+os.environ.setdefault("NO_TF", "1")
+keras_dir = ROOT_DIR / "data" / "cache" / "keras"
+keras_dir.mkdir(parents=True, exist_ok=True)
+os.environ.setdefault("KERAS_HOME", str(keras_dir))
+
 from factindic.cache import ResponseCache
 from factindic.exceptions import QuotaExhaustedError
 from factindic.experiment_runner import (
@@ -39,6 +46,7 @@ from factindic.verification import (
     AtomicClaimExtractor,
     BM25EvidenceRetriever,
     HybridClaimVerifier,
+    RuleBasedClaimExtractor,
     SentenceLevelVerifier,
     WholeDocumentVerifier,
     XNLIVerifier,
@@ -55,8 +63,9 @@ def reverify_controlled_experiment(
     delay_seconds: float = 3.0,
     resume: bool = True,
     dry_run: bool = False,
-    nli_provider: str = "cohere",
-    nli_model: str = "command-a-plus-05-2026",
+    nli_provider: str = "local",
+    nli_model: str = "MoritzLaurer/mDeBERTa-v3-base-xnli-multilingual-nli-2mil7",
+    claim_extractor_type: str = "rule",
 ) -> Dict[str, Any]:
     """Re-verify existing generations across all 6 conditions without re-generating summaries.
 
@@ -136,13 +145,16 @@ def reverify_controlled_experiment(
 
     # 3. Initialize Response Cache and Verifiers
     cache = ResponseCache(db_path=cache_db_path) if cache_db_path else None
-    llm_client = CohereClient()
     from factindic.verification.config import NLIConfig
     nli_cfg = NLIConfig(provider=nli_provider, model_id=nli_model)
     nli_verifier = XNLIVerifier(config=nli_cfg, cache=cache)
     whole_doc_verifier = WholeDocumentVerifier(verifier=nli_verifier)
     sentence_verifier = SentenceLevelVerifier(verifier=nli_verifier)
-    claim_extractor = AtomicClaimExtractor(client=llm_client, cache=cache, delay_seconds=delay_seconds)
+    if claim_extractor_type == "rule":
+        claim_extractor = RuleBasedClaimExtractor()
+    else:
+        llm_client = CohereClient()
+        claim_extractor = AtomicClaimExtractor(client=llm_client, cache=cache, delay_seconds=delay_seconds, fallback_to_rule=True)
     evidence_retriever = BM25EvidenceRetriever()
     hybrid_verifier = HybridClaimVerifier(verifier=nli_verifier, retriever=evidence_retriever)
 
@@ -164,10 +176,11 @@ def reverify_controlled_experiment(
         print("=" * 65)
         print(f"Total Source Records:    {len(ordered_source_records)} (5 EN, 5 HI)")
         print(f"Preserved Summaries:     {len(preserved_generations)} (10 Prompt A, 10 Prompt B)")
+        est_calls = 0 if (claim_extractor_type == "rule" and nli_provider == "local") else 440
         print(f"Total Evaluations:       60 (6 conditions x 10 records)")
         print(f"Already Evaluated (SUCCESS): {len(completed_keys)}")
         print(f"Remaining Evaluations:  {remaining_count}")
-        print(f"Estimated API Calls:     ~440 calls")
+        print(f"Estimated Live API Calls: {est_calls} (Claim: {claim_extractor_type}, NLI: {nli_provider})")
         print(f"Response Cache DB:       {cache_db_path}")
         if cache:
             c_stats = cache.get_stats()
@@ -436,14 +449,20 @@ def main():
         help="Calculate estimated API calls and audit state without executing API calls",
     )
     parser.add_argument(
+        "--claim-extractor",
+        default="rule",
+        choices=["rule", "llm"],
+        help="Claim extraction strategy ('rule' for deterministic rule-based extractor, 'llm' for Cohere)",
+    )
+    parser.add_argument(
         "--nli-provider",
-        default="cohere",
-        choices=["cohere", "local", "hosted"],
+        default="local",
+        choices=["local", "cohere", "hosted"],
         help="Inference provider for NLI verification",
     )
     parser.add_argument(
         "--nli-model",
-        default="command-a-plus-05-2026",
+        default="MoritzLaurer/mDeBERTa-v3-base-xnli-multilingual-nli-2mil7",
         help="Model ID for NLI verification",
     )
     parser.add_argument(
@@ -469,6 +488,7 @@ def main():
             dry_run=args.dry_run,
             nli_provider=args.nli_provider,
             nli_model=args.nli_model,
+            claim_extractor_type=args.claim_extractor,
         )
     except Exception as exc:
         print(f"\n[X] Re-verification failed: {exc}", file=sys.stderr)

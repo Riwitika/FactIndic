@@ -3,6 +3,13 @@
 Phase 1: Dataset Preparation and Validation Pipeline.
 """
 
+import os
+os.environ.setdefault("USE_TORCH", "1")
+os.environ.setdefault("USE_TF", "0")
+os.environ.setdefault("TRANSFORMERS_NO_TF", "1")
+os.environ.setdefault("NO_TF", "1")
+os.environ.setdefault("KERAS_BACKEND", "torch")
+
 from factindic.schema import FactIndicRecord, DatasetStatistics
 from factindic.validation import (
     validate_record,

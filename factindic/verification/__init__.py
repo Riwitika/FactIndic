@@ -23,6 +23,13 @@ from factindic.verification.claim_extractor import (
     load_extracted_claims,
     save_extracted_claims,
 )
+from factindic.verification.rule_claim_extractor import (
+    RuleBasedClaimExtractor,
+    clean_preamble,
+    decompose_english_sentence,
+    decompose_hindi_sentence,
+    is_meta_statement,
+)
 from factindic.verification.claim_verifier import (
     ClaimVerificationResult,
     HybridClaimVerifier,
@@ -59,6 +66,7 @@ __all__ = [
     "NLIConfig",
     "NLILabel",
     "NLIResult",
+    "RuleBasedClaimExtractor",
     "SUPPORTED_VERIFICATION_LANGUAGES",
     "SentenceLevelVerifier",
     "SentenceVerificationResult",

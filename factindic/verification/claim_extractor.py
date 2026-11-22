@@ -232,6 +232,9 @@ def _parse_claims_json(raw_text: str) -> List[str]:
     return claims
 
 
+from factindic.verification.rule_claim_extractor import RuleBasedClaimExtractor
+
+
 class AtomicClaimExtractor:
     """Extracts atomic factual claims from summary sentences using configured LLM client.
 
@@ -245,6 +248,8 @@ class AtomicClaimExtractor:
         cache: Optional[ResponseCache] = None,
         temperature: float = 0.0,
         delay_seconds: float = 0.0,
+        mode: str = "llm",
+        fallback_to_rule: bool = False,
     ) -> None:
         """Initialize AtomicClaimExtractor.
 
@@ -253,11 +258,16 @@ class AtomicClaimExtractor:
             cache: Optional ResponseCache for persistent caching of claim extraction.
             temperature: Sampling temperature for extraction (default: 0.0 for deterministic output).
             delay_seconds: Optional sleep interval in seconds after API calls.
+            mode: Extraction mode ('llm' to use LLM client, 'rule' to use rule-based extractor).
+            fallback_to_rule: If True, falls back to rule-based extraction on quota or LLM failure.
         """
         self.client = client
         self.cache = cache
         self.temperature = temperature
         self.delay_seconds = delay_seconds
+        self.mode = mode.strip().lower() if mode else "llm"
+        self.fallback_to_rule = fallback_to_rule
+        self._rule_extractor = RuleBasedClaimExtractor()
 
     def build_extraction_prompt(self, sentence: str, language: str) -> str:
         """Build the language-appropriate extraction prompt.
@@ -335,6 +345,16 @@ class AtomicClaimExtractor:
                     source_dataset=source_dataset,
                 )
             ]
+
+        if self.mode == "rule" or (self.client is None and self.fallback_to_rule):
+            return self._rule_extractor.extract_from_sentence(
+                sentence=sentence,
+                record_id=record_id,
+                sentence_index=sentence_index,
+                language=lang_clean,
+                prompt_strategy=prompt_strategy,
+                source_dataset=source_dataset,
+            )
 
         if self.client is None:
             return [
@@ -426,9 +446,28 @@ class AtomicClaimExtractor:
         except Exception as exc:
             err_msg = str(exc).lower()
             if isinstance(exc, QuotaExhaustedError) or "1000 api calls / month" in err_msg or ("trial key" in err_msg and "429" in err_msg):
+                if self.fallback_to_rule:
+                    return self._rule_extractor.extract_from_sentence(
+                        sentence=sentence,
+                        record_id=record_id,
+                        sentence_index=sentence_index,
+                        language=lang_clean,
+                        prompt_strategy=prompt_strategy,
+                        source_dataset=source_dataset,
+                    )
                 raise QuotaExhaustedError(
                     f"Cohere trial key monthly quota of 1000 API calls exceeded during claim extraction: {exc}"
                 ) from exc
+
+            if self.fallback_to_rule:
+                return self._rule_extractor.extract_from_sentence(
+                    sentence=sentence,
+                    record_id=record_id,
+                    sentence_index=sentence_index,
+                    language=lang_clean,
+                    prompt_strategy=prompt_strategy,
+                    source_dataset=source_dataset,
+                )
 
             return [
                 ExtractedClaim(

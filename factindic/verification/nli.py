@@ -21,6 +21,12 @@ import urllib.error
 import urllib.request
 from typing import Any, Dict, List, Optional, Sequence, Tuple, Union
 
+# Prevent transformers from probing TensorFlow/Keras in sandboxed environments
+os.environ.setdefault("USE_TORCH", "1")
+os.environ.setdefault("USE_TF", "0")
+os.environ.setdefault("TRANSFORMERS_NO_TF", "1")
+os.environ.setdefault("NO_TF", "1")
+
 from factindic.cache import ResponseCache
 from factindic.exceptions import (
     AuthenticationError,
