@@ -23,7 +23,7 @@ if str(ROOT_DIR) not in sys.path:
 
 from factindic.experiment_runner import (
     ConditionID,
-    CONDITION_DEFINITIONS,
+    CONDITION_SPECS as CONDITION_DEFINITIONS,
     ExperimentRecord,
     load_experiment_records,
     save_experiment_records,
@@ -101,21 +101,22 @@ def reverify_controlled_experiment(
             src_dataset = src_article.metadata.get("source_dataset", "csebuetnlp/xlsum") if src_article else "csebuetnlp/xlsum"
 
             gen_rec = GenerationRecord(
+                source_dataset=src_dataset,
+                source_config="default",
+                source_split="test",
                 source_record_id=art_id,
+                language=rec.language,
                 source_text=source_text,
                 reference_summary=ref_summary,
-                language=rec.language,
                 prompt_strategy=strat_key,
                 prompt_template_version=rec.prompt_template_version,
                 model_id=rec.model_id,
                 provider=rec.provider,
-                temperature=rec.generation_parameters.get("temperature", 0.3),
-                max_new_tokens=rec.generation_parameters.get("max_new_tokens", 256),
-                top_p=rec.generation_parameters.get("top_p", 0.9),
+                generation_parameters=rec.generation_parameters,
                 generated_summary=rec.generated_summary,
+                generation_timestamp_utc=rec.timestamp_utc,
                 latency_seconds=rec.generation_latency_seconds,
-                timestamp_utc=rec.timestamp_utc,
-                source_dataset=src_dataset,
+                status="SUCCESS",
             )
             preserved_generations[key] = gen_rec
 
@@ -230,11 +231,7 @@ def reverify_controlled_experiment(
                 verification_strategy=verif_strat,
                 model_id=gen_rec.model_id,
                 provider=gen_rec.provider,
-                generation_parameters={
-                    "temperature": gen_rec.temperature,
-                    "max_new_tokens": gen_rec.max_new_tokens,
-                    "top_p": gen_rec.top_p,
-                },
+                generation_parameters=dict(gen_rec.generation_parameters),
                 generated_summary=gen_rec.generated_summary,
                 generation_latency_seconds=gen_rec.latency_seconds,
                 verification_latency_ms=verif_latency_ms,
