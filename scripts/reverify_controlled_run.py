@@ -51,6 +51,8 @@ def reverify_controlled_experiment(
     output_dir: Union[str, Path] = "data/benchmark_results/controlled_run/reverified",
     delay_seconds: float = 3.0,
     resume: bool = True,
+    nli_provider: str = "cohere",
+    nli_model: str = "command-a-plus-05-2026",
 ) -> Dict[str, Any]:
     """Re-verify existing generations across all 6 conditions without re-generating summaries.
 
@@ -130,7 +132,9 @@ def reverify_controlled_experiment(
 
     # 3. Initialize Verifiers
     llm_client = CohereClient()
-    nli_verifier = XNLIVerifier()
+    from factindic.verification.config import NLIConfig
+    nli_cfg = NLIConfig(provider=nli_provider, model_id=nli_model)
+    nli_verifier = XNLIVerifier(config=nli_cfg)
     whole_doc_verifier = WholeDocumentVerifier(verifier=nli_verifier)
     sentence_verifier = SentenceLevelVerifier(verifier=nli_verifier)
     claim_extractor = AtomicClaimExtractor(client=llm_client, delay_seconds=delay_seconds)
@@ -245,8 +249,8 @@ def reverify_controlled_experiment(
             print(f"    -> Status: {exp_rec.status} (verif_latency: {exp_rec.verification_latency_ms}ms)", flush=True)
             reverified_results.append(exp_rec)
 
-            # Incremental save
-            save_experiment_records([exp_rec], out_results_file, append=True)
+            # Incremental clean save of all verified records so far
+            save_experiment_records(reverified_results, out_results_file, append=False)
 
     t_elapsed = round(time.time() - t_start, 2)
 
@@ -309,6 +313,9 @@ def reverify_controlled_experiment(
         },
     }
 
+    # Final clean rewrite of all reverified records to ensure exact ordering and no duplicates
+    save_experiment_records(reverified_results, out_results_file, append=False)
+
     with open(out_audit_file, "w", encoding="utf-8") as f:
         json.dump(audit_report, f, indent=2, ensure_ascii=False)
 
@@ -346,6 +353,17 @@ def main():
         help="Delay in seconds between claim extraction API calls",
     )
     parser.add_argument(
+        "--nli-provider",
+        default="cohere",
+        choices=["cohere", "local", "hosted"],
+        help="Inference provider for NLI verification",
+    )
+    parser.add_argument(
+        "--nli-model",
+        default="command-a-plus-05-2026",
+        help="Model ID for NLI verification",
+    )
+    parser.add_argument(
         "--no-resume",
         action="store_true",
         help="Rerun all conditions without resuming existing successes",
@@ -364,6 +382,8 @@ def main():
             output_dir=args.output_dir,
             delay_seconds=args.delay,
             resume=not args.no_resume,
+            nli_provider=args.nli_provider,
+            nli_model=args.nli_model,
         )
     except Exception as exc:
         print(f"\n[X] Re-verification failed: {exc}", file=sys.stderr)

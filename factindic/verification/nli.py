@@ -10,10 +10,15 @@ Note on Factuality Assessment:
     to premise-length biases, lack of real-world knowledge, and linguistic domain shifts.
 """
 
+import json
 import math
+import os
 import time
+import urllib.error
+import urllib.request
 from typing import Any, Dict, List, Optional, Sequence, Tuple, Union
 
+from factindic.models.alternative import load_local_factindic_env
 from factindic.verification.config import NLIConfig
 from factindic.verification.result import NLILabel, NLIResult
 
@@ -67,19 +72,42 @@ class XNLIVerifier:
         self._model: Optional[Any] = None
         self._tokenizer: Optional[Any] = None
         self._label_indices: Optional[Dict[str, int]] = None
+        self._api_key: Optional[str] = None
+
+    def _resolve_api_key(self) -> Optional[str]:
+        """Resolve hosted API key from config or environment variables."""
+        if self.config.api_key:
+            return self.config.api_key
+        local_env = load_local_factindic_env()
+        return (
+            os.environ.get("COHERE_API_KEY")
+            or os.environ.get("CO_API_KEY")
+            or local_env.get("COHERE_API_KEY")
+            or local_env.get("CO_API_KEY")
+        )
 
     @property
     def is_loaded(self) -> bool:
-        """Check whether the model and tokenizer are currently loaded into memory."""
+        """Check whether the verifier is ready for inference."""
+        if self.config.provider in ("cohere", "hosted"):
+            return self._api_key is not None
         return self._model is not None and self._tokenizer is not None
 
     def load_model(self) -> None:
-        """Explicitly load the tokenizer and model into memory.
+        """Explicitly load the tokenizer and model into memory or validate hosted credentials.
 
         Raises:
-            VerificationDependencyError: If torch or transformers is not installed.
-            VerificationModelLoadError: If loading from Hugging Face fails.
+            VerificationDependencyError: If torch or transformers is not installed for local provider.
+            VerificationModelLoadError: If loading from Hugging Face fails or API credentials are missing.
         """
+        if self.config.provider in ("cohere", "hosted"):
+            self._api_key = self._resolve_api_key()
+            if not self._api_key:
+                raise VerificationModelLoadError(
+                    "Hosted NLI verification requires an API key. Set COHERE_API_KEY environment variable."
+                )
+            return
+
         if self.is_loaded:
             return
 
@@ -122,6 +150,7 @@ class XNLIVerifier:
         self._model = None
         self._tokenizer = None
         self._label_indices = None
+        self._api_key = None
         try:
             import gc
             gc.collect()
@@ -253,6 +282,9 @@ class XNLIVerifier:
             h = self._validate_input_text(pair[1], f"Hypothesis at index {i}")
             validated_pairs.append((p, h))
 
+        if self.config.provider in ("cohere", "hosted"):
+            return self._verify_batch_hosted(validated_pairs, canon_lang)
+
         if not self.is_loaded:
             self.load_model()
 
@@ -335,5 +367,154 @@ class XNLIVerifier:
                         latency_ms=round(per_item_latency_ms, 2),
                     )
                 )
+
+        return results
+
+    def _verify_batch_hosted(
+        self,
+        pairs: List[Tuple[str, str]],
+        language: str,
+    ) -> List[NLIResult]:
+        """Evaluate premise-hypothesis pairs using hosted multilingual NLI."""
+        if not self._api_key:
+            self._api_key = self._resolve_api_key()
+        if not self._api_key:
+            raise VerificationModelLoadError(
+                "Hosted NLI inference requires an API key. Set COHERE_API_KEY environment variable."
+            )
+
+        results: List[NLIResult] = []
+        schema = {
+            "type": "object",
+            "properties": {
+                "label": {"type": "string", "enum": ["entailment", "neutral", "contradiction"]},
+                "entailment_prob": {"type": "number"},
+                "neutral_prob": {"type": "number"},
+                "contradiction_prob": {"type": "number"},
+            },
+            "required": ["label", "entailment_prob", "neutral_prob", "contradiction_prob"],
+        }
+        url = self.config.api_base_url or "https://api.cohere.com/v2/chat"
+
+        for p, h in pairs:
+            prompt = (
+                f"You are a rigorous Natural Language Inference (NLI) evaluator.\n"
+                f"Given a premise and a hypothesis in {language}, determine whether the hypothesis is:\n"
+                f"- entailment: The premise strictly supports or entails the hypothesis.\n"
+                f"- contradiction: The hypothesis contradicts or is incompatible with the premise.\n"
+                f"- neutral: The premise neither entails nor contradicts the hypothesis (unsupported, plausible, or missing info).\n\n"
+                f"Language: {language}\n"
+                f"Premise: {p}\n"
+                f"Hypothesis: {h}\n"
+            )
+            payload = {
+                "model": self.config.model_id,
+                "messages": [{"role": "user", "content": prompt}],
+                "temperature": 0.0,
+                "max_tokens": 4096,
+                "response_format": {"type": "json_object", "schema": schema},
+            }
+            req = urllib.request.Request(
+                url,
+                data=json.dumps(payload).encode("utf-8"),
+                headers={
+                    "Authorization": f"Bearer {self._api_key}",
+                    "Content-Type": "application/json",
+                    "User-Agent": "FactIndic-Research/1.0",
+                },
+            )
+
+            t0 = time.perf_counter()
+            last_exc: Optional[Exception] = None
+            out_data: Optional[Dict[str, Any]] = None
+
+            for attempt in range(self.config.max_retries):
+                try:
+                    with urllib.request.urlopen(req, timeout=self.config.timeout) as resp:
+                        res_json = json.loads(resp.read().decode("utf-8"))
+                        text_val = ""
+                        for item in res_json.get("message", {}).get("content", []):
+                            if isinstance(item, dict) and item.get("type") == "text":
+                                text_val = item.get("text", "")
+                                break
+                        if not text_val and "text" in res_json.get("message", {}).get("content", [{}])[0]:
+                            text_val = res_json["message"]["content"][0]["text"]
+
+                        cleaned = text_val.strip()
+                        if cleaned.startswith("```"):
+                            cleaned = re.sub(r"^```(?:json)?\s*", "", cleaned)
+                            cleaned = re.sub(r"\s*```$", "", cleaned)
+                        out_data = json.loads(cleaned)
+                        break
+                except Exception as exc:
+                    last_exc = exc
+                    err_msg = str(exc).lower()
+                    if isinstance(exc, urllib.error.HTTPError):
+                        try:
+                            body = exc.read().decode("utf-8", errors="replace")
+                            err_msg += " " + body.lower()
+                        except Exception:
+                            pass
+                    if "1000 api calls / month" in err_msg or ("trial key" in err_msg and "429" in err_msg):
+                        raise RuntimeError(
+                            f"Cohere trial key monthly quota of 1000 API calls exceeded: {exc}"
+                        ) from exc
+
+                    wait_time = 2.0 * (attempt + 1)
+                    if isinstance(exc, urllib.error.HTTPError):
+                        if exc.code == 429:
+                            retry_after = exc.headers.get("Retry-After")
+                            wait_time = float(retry_after) if retry_after else max(15.0, 10.0 * (attempt + 1))
+                    elif "429" in str(exc) or "too many requests" in str(exc).lower():
+                        wait_time = max(15.0, 10.0 * (attempt + 1))
+                    time.sleep(wait_time)
+
+            if out_data is None:
+                raise RuntimeError(
+                    f"Hosted NLI inference failed after {self.config.max_retries} attempts: {last_exc}"
+                )
+
+            latency_ms = (time.perf_counter() - t0) * 1000.0
+
+            raw_label = str(out_data.get("label", "neutral")).lower().strip()
+            entail_prob = float(out_data.get("entailment_prob", 0.0))
+            neut_prob = float(out_data.get("neutral_prob", 0.0))
+            contra_prob = float(out_data.get("contradiction_prob", 0.0))
+
+            # Normalize probabilities if sum > 0
+            total_prob = entail_prob + neut_prob + contra_prob
+            if total_prob > 0:
+                entail_prob /= total_prob
+                neut_prob /= total_prob
+                contra_prob /= total_prob
+            else:
+                entail_prob, neut_prob, contra_prob = 0.333, 0.334, 0.333
+
+            prob_dict = {
+                NLILabel.CONTRADICTION.value: contra_prob,
+                NLILabel.NEUTRAL.value: neut_prob,
+                NLILabel.ENTAILMENT.value: entail_prob,
+            }
+
+            if raw_label not in [l.value for l in NLILabel]:
+                raw_label = max(prob_dict, key=prob_dict.get)  # type: ignore
+
+            results.append(
+                NLIResult(
+                    premise=p,
+                    hypothesis=h,
+                    language=language,
+                    predicted_label=raw_label,
+                    entailment_prob=round(entail_prob, 4),
+                    neutral_prob=round(neut_prob, 4),
+                    contradiction_prob=round(contra_prob, 4),
+                    probabilities={k: round(v, 4) for k, v in prob_dict.items()},
+                    model_id=self.config.model_id,
+                    latency_ms=round(latency_ms, 2),
+                )
+            )
+
+            if len(pairs) > 1:
+                time.sleep(0.3)
 
         return results

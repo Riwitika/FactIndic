@@ -53,12 +53,26 @@ def split_into_sentences(text: str, language: str = "en") -> List[str]:
     if not cleaned:
         return []
 
+    # Protect common English abbreviations and titles (e.g., Dr., Mr., Prof.)
+    protected = cleaned
+    ph_map: Dict[str, str] = {}
+    if language.strip().lower() in ("en", "english"):
+        abbrs = ["Dr.", "Mr.", "Mrs.", "Ms.", "Prof.", "Gov.", "Gen.", "Col.", "Lt.", "St.", "Capt.", "vs.", "etc."]
+        for i, a in enumerate(abbrs):
+            ph = f"__ABBR_{i}__"
+            if a in protected:
+                protected = protected.replace(a, ph)
+                ph_map[ph] = a
+
     # Lookbehind for sentence terminators followed by one or more whitespace characters
     pattern = r"(?<=[।॥!?\.])\s+"
-    raw_sentences = re.split(pattern, cleaned)
+    raw_sentences = re.split(pattern, protected)
 
     sentences: List[str] = []
     for s in raw_sentences:
+        # Restore any masked abbreviations
+        for ph, orig in ph_map.items():
+            s = s.replace(ph, orig)
         s_clean = s.strip()
         if s_clean:
             sentences.append(s_clean)

@@ -168,6 +168,13 @@ class AyaExpanseClient(BaseLLMClient):
                             return content[0]["text"].strip()
                     raise ValueError(f"Unexpected Cohere response structure: {res_data}")
             except urllib.error.HTTPError as http_err:
+                body_err = ""
+                try:
+                    body_err = http_err.read().decode("utf-8", errors="replace")
+                except Exception:
+                    pass
+                if "1000 api calls / month" in body_err.lower() or ("trial key" in body_err.lower() and http_err.code == 429):
+                    raise http_err
                 if http_err.code in (429, 500, 502, 503, 504) and attempt < max_retries - 1:
                     retry_after = http_err.headers.get("Retry-After")
                     try:

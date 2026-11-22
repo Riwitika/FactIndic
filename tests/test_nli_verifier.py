@@ -4,6 +4,7 @@ All tests run 100% offline using mocked model and tokenizer outputs without
 downloading model weights or requiring network access.
 """
 
+import json
 import math
 import sys
 from types import ModuleType
@@ -456,3 +457,115 @@ def test_nli_result_serialization_roundtrip():
     assert restored.model_id == orig.model_id
     assert restored.latency_ms == orig.latency_ms
     assert restored.probabilities == orig.probabilities
+
+
+# ---------------------------------------------------------------------------
+# Test 11: Hosted NLI Verification (Cohere provider)
+# ---------------------------------------------------------------------------
+
+def test_hosted_nli_loads_with_api_key():
+    """Hosted verifier marks is_loaded True when api_key is present."""
+    cfg = NLIConfig(provider="cohere", model_id="command-a-plus-05-2026", api_key="test-key-12345")
+    verifier = XNLIVerifier(config=cfg)
+    assert not verifier.is_loaded
+    verifier.load_model()
+    assert verifier.is_loaded
+
+
+def test_hosted_nli_fails_without_api_key(monkeypatch):
+    """VerificationModelLoadError is raised when no API key is provided or in environment."""
+    monkeypatch.delenv("COHERE_API_KEY", raising=False)
+    monkeypatch.delenv("CO_API_KEY", raising=False)
+    monkeypatch.delenv("FACTINDIC_COHERE_API_KEY", raising=False)
+    with patch("factindic.verification.nli.load_local_factindic_env", return_value={}):
+        cfg = NLIConfig(provider="cohere", model_id="command-a-plus-05-2026", api_key=None)
+        verifier = XNLIVerifier(config=cfg)
+        with pytest.raises(VerificationModelLoadError, match="Hosted NLI verification requires an API key"):
+            verifier.load_model()
+
+
+def test_hosted_nli_verify_batch_mocked():
+    """Hosted verify_batch successfully parses JSON responses and normalizes probabilities."""
+    cfg = NLIConfig(provider="cohere", model_id="command-a-plus-05-2026", api_key="dummy-key")
+    verifier = XNLIVerifier(config=cfg)
+
+    def mock_urlopen(req, timeout=None):
+        payload = json.loads(req.data.decode("utf-8"))
+        prompt = payload["messages"][0]["content"]
+        if "sky is blue" in prompt:
+            body = {
+                "label": "entailment",
+                "entailment_prob": 0.8,
+                "neutral_prob": 0.1,
+                "contradiction_prob": 0.1,
+            }
+        else:
+            body = {
+                "label": "contradiction",
+                "entailment_prob": 0.05,
+                "neutral_prob": 0.05,
+                "contradiction_prob": 0.9,
+            }
+        resp = MagicMock()
+        resp.read.return_value = json.dumps(
+            {"message": {"content": [{"type": "text", "text": json.dumps(body)}]}}
+        ).encode("utf-8")
+        resp.__enter__.return_value = resp
+        return resp
+
+    pairs = [
+        ("The sky is blue today.", "The sky is blue."),
+        ("The cat is sleeping on the mat.", "The cat is barking loudly."),
+    ]
+
+    with patch("urllib.request.urlopen", side_effect=mock_urlopen):
+        results = verifier.verify_batch(pairs, language="en")
+
+    assert len(results) == 2
+    assert results[0].predicted_label == "entailment"
+    assert results[0].entailment_prob == pytest.approx(0.8)
+    assert results[0].contradiction_prob == pytest.approx(0.1)
+    assert results[0].neutral_prob == pytest.approx(0.1)
+    assert results[0].latency_ms > 0
+
+    assert results[1].predicted_label == "contradiction"
+    assert results[1].contradiction_prob == pytest.approx(0.9)
+    assert results[1].entailment_prob == pytest.approx(0.05)
+
+
+def test_hosted_nli_verify_batch_normalizes_unnormalized_probs():
+    """Hosted verifier normalizes probability dictionaries if they do not sum to 1.0."""
+    cfg = NLIConfig(provider="cohere", model_id="command-a-plus-05-2026", api_key="dummy-key")
+    verifier = XNLIVerifier(config=cfg)
+
+    mock_resp_json = {
+        "label": "neutral",
+        "entailment_prob": 10.0,
+        "neutral_prob": 80.0,
+        "contradiction_prob": 10.0,
+    }
+
+    mock_http_response = MagicMock()
+    mock_http_response.read.return_value = json.dumps(
+        {
+            "message": {
+                "content": [
+                    {
+                        "type": "text",
+                        "text": json.dumps(mock_resp_json),
+                    }
+                ]
+            }
+        }
+    ).encode("utf-8")
+    mock_http_response.__enter__.return_value = mock_http_response
+
+    with patch("urllib.request.urlopen", return_value=mock_http_response):
+        results = verifier.verify_batch([("Premise", "Hypothesis")], language="hi")
+
+    assert len(results) == 1
+    assert results[0].predicted_label == "neutral"
+    assert results[0].neutral_prob == pytest.approx(0.8)
+    assert results[0].entailment_prob == pytest.approx(0.1)
+    assert results[0].contradiction_prob == pytest.approx(0.1)
+

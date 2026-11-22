@@ -355,7 +355,7 @@ class HybridClaimVerifier:
                         latency_ms=0.0,
                         verification_strategy="hybrid_claim_level",
                         status="FAILED",
-                        error_message="Atomic claim text is empty or missing.",
+                        error_message=getattr(claim, "error_message", None) or "Atomic claim text is empty or missing.",
                         verification_timestamp_utc=timestamp_utc,
                         prompt_strategy=prompt_strat,
                         source_dataset=source_ds,

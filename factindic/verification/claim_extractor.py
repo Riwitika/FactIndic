@@ -14,6 +14,7 @@ Methodology & Epistemic Boundaries:
 
 import json
 import re
+import time
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -350,7 +351,7 @@ class AtomicClaimExtractor:
             gen_kwargs: Dict[str, Any] = {
                 "prompt": prompt,
                 "temperature": self.temperature,
-                "max_new_tokens": 1024,
+                "max_new_tokens": 2048,
             }
             sig = inspect.signature(self.client.generate)
             if "response_format" in sig.parameters or any(
