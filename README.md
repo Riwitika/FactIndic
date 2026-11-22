@@ -23,8 +23,8 @@ FactIndic evaluates a $2 \times 3$ factorial matrix across English and Hindi usi
 - **Source Invariance**: Identical source records are evaluated across all six conditions.
 - **Model Parity**: Cohere Command A+ (`command-a-plus-05-2026`) with identical sampling parameters (`temperature=0.3, max_new_tokens=256, top_p=0.9`).
 - **Multilingual Separation**: English and Hindi records are evaluated and reported separately.
-- **Verification Engine**: Multilingual XLM-RoBERTa Large XNLI (`joeddav/xlm-roberta-large-xnli`) running deterministically on CPU.
-- **Epistemic Bounds**: No synthetic composite scores; raw class probabilities and claim-level evidence rankings are preserved intact.
+- **Verification Engine**: Multilingual mDeBERTa-v3 (`MoritzLaurer/mDeBERTa-v3-base-xnli-multilingual-nli-2mil7`, revision `b5113eb38ab63efdd7f280f8c144ea8b13f978ce`) running deterministically on CPU.
+- **Epistemic Bounds**: No synthetic composite scores; raw class probabilities and claim-level evidence rankings are preserved intact. Note that model probabilities/confidence scores are not statistically calibrated probabilities without a separate calibration study.
 
 ---
 
@@ -296,7 +296,7 @@ factindic/
 │   │   ├── __init__.py           # Verification API exports
 │   │   ├── config.py             # NLIConfig dataclass
 │   │   ├── result.py             # NLIResult and NLILabel schemas
-│   │   └── nli.py                # XNLIVerifier (joeddav/xlm-roberta-large-xnli)
+│   │   └── nli.py                # XNLIVerifier (MoritzLaurer/mDeBERTa-v3-base-xnli-multilingual-nli-2mil7)
 │   ├── models/
 │   │   ├── __init__.py
 │   │   ├── base.py               # BaseLLMClient and GenerationResult

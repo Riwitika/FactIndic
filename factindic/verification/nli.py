@@ -1,6 +1,7 @@
 """Multilingual Natural Language Inference (NLI) verification adapter.
 
-Uses joeddav/xlm-roberta-large-xnli to evaluate premise-hypothesis entailment for
+Uses MoritzLaurer/mDeBERTa-v3-base-xnli-multilingual-nli-2mil7 (revision
+b5113eb38ab63efdd7f280f8c144ea8b13f978ce) to evaluate premise-hypothesis entailment for
 factual consistency evaluation across English and Hindi summary sentences.
 
 Note on Factuality Assessment:
@@ -8,6 +9,7 @@ Note on Factuality Assessment:
     consistency with source evidence. It should NOT be treated as a definitive
     or ground-truth measure of real-world factual correctness, as models are subject
     to premise-length biases, lack of real-world knowledge, and linguistic domain shifts.
+    Confidence scores are model probabilities, not statistically calibrated probabilities.
 """
 
 import json
@@ -135,13 +137,20 @@ class XNLIVerifier:
             ) from exc
 
         try:
+            revision = getattr(self.config, "model_revision", None)
+            load_kwargs: Dict[str, Any] = {}
+            if self.config.cache_dir:
+                load_kwargs["cache_dir"] = self.config.cache_dir
+            if revision:
+                load_kwargs["revision"] = revision
+
             tokenizer = AutoTokenizer.from_pretrained(
                 self.config.model_id,
-                cache_dir=self.config.cache_dir,
+                **load_kwargs,
             )
             model = AutoModelForSequenceClassification.from_pretrained(
                 self.config.model_id,
-                cache_dir=self.config.cache_dir,
+                **load_kwargs,
             )
             if self.config.device == "cpu":
                 model = model.to("cpu")
@@ -207,13 +216,13 @@ class XNLIVerifier:
                 elif "neutral" in label_clean:
                     canonical_map[NLILabel.NEUTRAL.value] = idx
 
-        # Default fallback for joeddav/xlm-roberta-large-xnli: 0=contradiction, 1=neutral, 2=entailment
-        if NLILabel.CONTRADICTION.value not in canonical_map:
-            canonical_map[NLILabel.CONTRADICTION.value] = 0
+        # Default fallback for MoritzLaurer/mDeBERTa-v3-base-xnli: 0=entailment, 1=neutral, 2=contradiction
+        if NLILabel.ENTAILMENT.value not in canonical_map:
+            canonical_map[NLILabel.ENTAILMENT.value] = 0
         if NLILabel.NEUTRAL.value not in canonical_map:
             canonical_map[NLILabel.NEUTRAL.value] = 1
-        if NLILabel.ENTAILMENT.value not in canonical_map:
-            canonical_map[NLILabel.ENTAILMENT.value] = 2
+        if NLILabel.CONTRADICTION.value not in canonical_map:
+            canonical_map[NLILabel.CONTRADICTION.value] = 2
 
         return canonical_map
 
@@ -299,6 +308,30 @@ class XNLIVerifier:
         if self.config.provider in ("cohere", "hosted"):
             return self._verify_batch_hosted(validated_pairs, canon_lang)
 
+        revision = getattr(self.config, "model_revision", None)
+        effective_batch_size = batch_size or self.config.batch_size
+        results: List[Optional[NLIResult]] = [None] * len(validated_pairs)
+
+        # Check cache for each pair first
+        pairs_to_compute: List[Tuple[int, Tuple[str, str]]] = []
+        for idx, (p, h) in enumerate(validated_pairs):
+            if self.cache is not None:
+                cached_dict = self.cache.get_nli(
+                    premise=p,
+                    hypothesis=h,
+                    language=canon_lang,
+                    model_id=self.config.model_id,
+                    provider=self.config.provider,
+                    model_revision=revision,
+                )
+                if cached_dict is not None:
+                    results[idx] = NLIResult.from_dict(cached_dict)
+                    continue
+            pairs_to_compute.append((idx, (p, h)))
+
+        if not pairs_to_compute:
+            return [r for r in results if r is not None]
+
         if not self.is_loaded:
             self.load_model()
 
@@ -306,23 +339,22 @@ class XNLIVerifier:
         assert self._model is not None
         assert self._label_indices is not None
 
-        effective_batch_size = batch_size or self.config.batch_size
-        results: List[NLIResult] = []
-
         import torch
 
         contra_idx = self._label_indices[NLILabel.CONTRADICTION.value]
         neut_idx = self._label_indices[NLILabel.NEUTRAL.value]
         entail_idx = self._label_indices[NLILabel.ENTAILMENT.value]
 
-        for batch_start in range(0, len(validated_pairs), effective_batch_size):
-            batch_pairs = validated_pairs[batch_start : batch_start + effective_batch_size]
+        for batch_start in range(0, len(pairs_to_compute), effective_batch_size):
+            batch_slice = pairs_to_compute[batch_start : batch_start + effective_batch_size]
+            batch_indices = [item[0] for item in batch_slice]
+            batch_pairs = [item[1] for item in batch_slice]
             premises = [bp[0] for bp in batch_pairs]
             hypotheses = [bp[1] for bp in batch_pairs]
 
             t_start = time.perf_counter()
 
-            # Tokenize pair using controlled truncation strategy
+            # Tokenize pair using native tokenizer pair-interface with controlled truncation
             inputs = self._tokenizer(
                 premises,
                 hypotheses,
@@ -350,7 +382,7 @@ class XNLIVerifier:
 
             logits_list = logits_list[:len(batch_pairs)]
 
-            for idx, raw_logits in enumerate(logits_list):
+            for b_i, raw_logits in enumerate(logits_list):
                 probs = _softmax(raw_logits)
 
                 prob_contra = float(probs[contra_idx])
@@ -366,24 +398,33 @@ class XNLIVerifier:
                 # Predicted label is the class with highest probability
                 pred_label = max(prob_dict, key=prob_dict.get)  # type: ignore
 
-                premise_orig, hyp_orig = batch_pairs[idx]
+                premise_orig, hyp_orig = batch_pairs[b_i]
+                orig_idx = batch_indices[b_i]
                 nli_res = NLIResult(
                     premise=premise_orig,
                     hypothesis=hyp_orig,
                     language=canon_lang,
                     predicted_label=pred_label,
-                    entailment_prob=prob_entail,
-                    neutral_prob=prob_neut,
-                    contradiction_prob=prob_contra,
-                    probabilities=prob_dict,
+                    entailment_prob=round(prob_entail, 4),
+                    neutral_prob=round(prob_neut, 4),
+                    contradiction_prob=round(prob_contra, 4),
+                    probabilities={k: round(v, 4) for k, v in prob_dict.items()},
                     model_id=self.config.model_id,
                     latency_ms=round(per_item_latency_ms, 2),
                 )
                 if self.cache is not None:
-                    self.cache.set_nli(premise_orig, hyp_orig, canon_lang, self.config.model_id, nli_res.to_dict())
-                results.append(nli_res)
+                    self.cache.set_nli(
+                        premise=premise_orig,
+                        hypothesis=hyp_orig,
+                        language=canon_lang,
+                        model_id=self.config.model_id,
+                        result_dict=nli_res.to_dict(),
+                        provider=self.config.provider,
+                        model_revision=revision,
+                    )
+                results[orig_idx] = nli_res
 
-        return results
+        return [r for r in results if r is not None]
 
     def _verify_batch_hosted(
         self,

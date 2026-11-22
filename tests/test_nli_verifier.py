@@ -569,3 +569,82 @@ def test_hosted_nli_verify_batch_normalizes_unnormalized_probs():
     assert results[0].entailment_prob == pytest.approx(0.1)
     assert results[0].contradiction_prob == pytest.approx(0.1)
 
+
+# ---------------------------------------------------------------------------
+# Test 12: mDeBERTa local verification, caching and revision tracking
+# ---------------------------------------------------------------------------
+
+def test_mdeberta_default_config():
+    """NLIConfig defaults to MoritzLaurer/mDeBERTa-v3 with pinned revision."""
+    cfg = NLIConfig()
+    assert cfg.model_id == "MoritzLaurer/mDeBERTa-v3-base-xnli-multilingual-nli-2mil7"
+    assert cfg.model_revision == "b5113eb38ab63efdd7f280f8c144ea8b13f978ce"
+    assert cfg.device == "cpu"
+    assert cfg.provider == "local"
+    assert cfg.max_length == 512
+    assert cfg.truncation_strategy == "only_first"
+
+
+def test_mdeberta_standard_id2label_mapping():
+    """Verifier maps mDeBERTa native id2label {0: entailment, 1: neutral, 2: contradiction}."""
+    verifier = XNLIVerifier()
+    config = DummyConfig(id2label={0: "entailment", 1: "neutral", 2: "contradiction"})
+    mapping = verifier._resolve_label_indices(config)
+
+    assert mapping[NLILabel.ENTAILMENT.value] == 0
+    assert mapping[NLILabel.NEUTRAL.value] == 1
+    assert mapping[NLILabel.CONTRADICTION.value] == 2
+
+
+def test_local_verify_batch_cache_hit_and_miss(tmp_path):
+    """Local verify_batch consults SQLite cache, avoiding inference on cache hits."""
+    from factindic.cache import ResponseCache
+
+    cache_file = tmp_path / "test_nli_cache.db"
+    cache = ResponseCache(db_path=cache_file)
+    verifier = XNLIVerifier(cache=cache)
+
+    dummy_model = DummyModel(logits=[[3.0, -1.0, -2.0]])  # Entailment
+    dummy_tok = DummyTokenizer()
+    verifier._model = dummy_model
+    verifier._tokenizer = dummy_tok
+    verifier._label_indices = {"entailment": 0, "neutral": 1, "contradiction": 2}
+
+    pair = ("The sky is clear today.", "The sky is blue.")
+    results1 = verifier.verify_batch([pair], language="en")
+    assert len(results1) == 1
+    assert results1[0].predicted_label == "entailment"
+    assert cache.get_stats().hits == 0
+    assert cache.get_stats().writes == 1
+
+    # Second call should be a cache hit
+    results2 = verifier.verify_batch([pair], language="en")
+    assert len(results2) == 1
+    assert results2[0].predicted_label == "entailment"
+    assert cache.get_stats().hits == 1
+
+
+def test_model_load_passes_revision():
+    """load_model passes configured model_revision to Hugging Face from_pretrained."""
+    cfg = NLIConfig(
+        model_id="MoritzLaurer/mDeBERTa-v3-base-xnli-multilingual-nli-2mil7",
+        model_revision="b5113eb38ab63efdd7f280f8c144ea8b13f978ce",
+    )
+    verifier = XNLIVerifier(config=cfg)
+
+    mock_tok = MagicMock()
+    mock_model = MagicMock()
+    mock_model.config = DummyConfig(id2label={0: "entailment", 1: "neutral", 2: "contradiction"})
+
+    with patch("transformers.AutoTokenizer.from_pretrained", return_value=mock_tok) as mock_tok_fn:
+        with patch("transformers.AutoModelForSequenceClassification.from_pretrained", return_value=mock_model) as mock_mod_fn:
+            verifier.load_model()
+            mock_tok_fn.assert_called_once_with(
+                "MoritzLaurer/mDeBERTa-v3-base-xnli-multilingual-nli-2mil7",
+                revision="b5113eb38ab63efdd7f280f8c144ea8b13f978ce",
+            )
+            mock_mod_fn.assert_called_once_with(
+                "MoritzLaurer/mDeBERTa-v3-base-xnli-multilingual-nli-2mil7",
+                revision="b5113eb38ab63efdd7f280f8c144ea8b13f978ce",
+            )
+

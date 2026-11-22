@@ -6,21 +6,22 @@ This guide documents the Natural Language Inference (NLI) verification architect
 
 ## 1. Model Overview
 
-- **Model Identifier**: [`joeddav/xlm-roberta-large-xnli`](https://huggingface.co/joeddav/xlm-roberta-large-xnli)
-- **Official Model Card**: [https://huggingface.co/joeddav/xlm-roberta-large-xnli](https://huggingface.co/joeddav/xlm-roberta-large-xnli)
-- **Base Architecture**: XLM-RoBERTa Large (`xlm-roberta-large`)
-- **Parameter Count**: ~560 Million parameters (24 layers, 1024 hidden dimension, 16 attention heads)
-- **Pretraining**: Self-supervised masked language modeling on CC-100 (2.5 TB filtered text across 100 languages)
-- **Fine-Tuning**: Supervised sequence classification on the multilingual Cross-lingual Natural Language Inference (XNLI) benchmark and MNLI
-- **Licence**: **MIT License** (permissive for research and commercial reuse with attribution)
+- **Model Identifier**: [`MoritzLaurer/mDeBERTa-v3-base-xnli-multilingual-nli-2mil7`](https://huggingface.co/MoritzLaurer/mDeBERTa-v3-base-xnli-multilingual-nli-2mil7)
+- **Pinned Model Revision**: `b5113eb38ab63efdd7f280f8c144ea8b13f978ce`
+- **Official Model Card**: [https://huggingface.co/MoritzLaurer/mDeBERTa-v3-base-xnli-multilingual-nli-2mil7](https://huggingface.co/MoritzLaurer/mDeBERTa-v3-base-xnli-multilingual-nli-2mil7)
+- **Base Architecture**: DeBERTa-v2/v3 Cross-Encoder (`DebertaV2ForSequenceClassification`)
+- **Parameter Count**: ~278 Million parameters (~552 MB disk footprint)
+- **Pretraining**: CC-100 multilingual corpus with disentangled attention and enhanced mask decoder
+- **Fine-Tuning**: Supervised sequence classification on XNLI (including Hindi) + MNLI + 2.7M multilingual NLI pairs (Laurer et al., 2024)
+- **Licence**: **MIT License** (permissive for research and commercial reuse)
 
 ---
 
-## 2. Supported Languages
+## 2. Supported Languages & Indic Processing
 
-XLM-RoBERTa-large-XNLI natively supports 15 languages evaluated on the XNLI benchmark. FactIndic focuses on:
-- **English (`en`)**: High-resource baseline
-- **Hindi (`hi`)**: Target Indic language using native Devanagari script
+The model natively supports 26+ languages evaluated on the XNLI benchmark. FactIndic focuses on:
+- **English (`en`)**: High-resource baseline (~88.5% benchmark accuracy)
+- **Hindi (`hi`)**: Target Indic language using native Devanagari script (~79.2% benchmark accuracy)
 
 Both languages share the unified multilingual sentencepiece vocabulary (250,000 subwords), ensuring direct cross-lingual representations without translation artifacts.
 
@@ -90,7 +91,8 @@ from factindic.verification import XNLIVerifier, NLIConfig
 
 # Configure CPU verifier with controlled premise truncation
 config = NLIConfig(
-    model_id="joeddav/xlm-roberta-large-xnli",
+    model_id="MoritzLaurer/mDeBERTa-v3-base-xnli-multilingual-nli-2mil7",
+    model_revision="b5113eb38ab63efdd7f280f8c144ea8b13f978ce",
     batch_size=2,
     max_length=512,
     device="cpu",
@@ -338,7 +340,7 @@ The hybrid claim verification workflow operates in three connected stages:
 3. **Evidence-to-Claim NLI Evaluation (`claim_verifier.py`)**: Formulates an NLI inference pair where:
    - **Premise ($P$)**: Candidate evidence passage from the source article.
    - **Hypothesis ($H$)**: Standalone atomic claim.
-   - Evaluated by `XNLIVerifier` (`joeddav/xlm-roberta-large-xnli`).
+   - Evaluated by `XNLIVerifier` (`MoritzLaurer/mDeBERTa-v3-base-xnli-multilingual-nli-2mil7`, revision `b5113eb38ab63efdd7f280f8c144ea8b13f978ce`).
 
 $$\text{NLI Pair} = \text{<s> Evidence Passage </s></s> Atomic Claim </s>}$$
 

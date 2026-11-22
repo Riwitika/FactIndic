@@ -24,7 +24,8 @@ class NLIConfig:
         max_retries: Maximum retry attempts for transient network/rate errors.
     """
 
-    model_id: str = "joeddav/xlm-roberta-large-xnli"
+    model_id: str = "MoritzLaurer/mDeBERTa-v3-base-xnli-multilingual-nli-2mil7"
+    model_revision: str = "b5113eb38ab63efdd7f280f8c144ea8b13f978ce"
     provider: str = "local"
     device: str = "cpu"
     batch_size: int = 4

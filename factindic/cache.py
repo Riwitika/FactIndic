@@ -183,6 +183,7 @@ class ResponseCache:
         language: str,
         model_id: str,
         provider: str = "default",
+        model_revision: Optional[str] = None,
     ) -> Optional[Dict[str, Any]]:
         """Retrieve cached NLI result for a premise-hypothesis pair."""
         payload = {
@@ -192,6 +193,8 @@ class ResponseCache:
             "model_id": model_id.strip(),
             "provider": provider.strip().lower(),
         }
+        if model_revision:
+            payload["model_revision"] = model_revision.strip()
         return self.get("nli", payload)
 
     def set_nli(
@@ -202,6 +205,7 @@ class ResponseCache:
         model_id: str,
         result_dict: Dict[str, Any],
         provider: str = "default",
+        model_revision: Optional[str] = None,
     ) -> str:
         """Store an NLI evaluation result in cache."""
         payload = {
@@ -211,6 +215,8 @@ class ResponseCache:
             "model_id": model_id.strip(),
             "provider": provider.strip().lower(),
         }
+        if model_revision:
+            payload["model_revision"] = model_revision.strip()
         return self.set("nli", payload, result_dict)
 
     # -----------------------------------------------------------------------

@@ -46,10 +46,11 @@ def main() -> int:
         print("=" * 70)
         print("FactIndic Multilingual NLI Smoke Test (Gated)")
         print("=" * 70)
-        print("Model: joeddav/xlm-roberta-large-xnli (560M parameters, ~2.2 GB)")
-        print("\nTo download model weights and run live CPU inference, invoke with:")
+        print("Model: MoritzLaurer/mDeBERTa-v3-base-xnli-multilingual-nli-2mil7 (278M parameters, ~552 MB)")
+        print("Revision: b5113eb38ab63efdd7f280f8c144ea8b13f978ce")
+        print("\nTo load cached weights and run live CPU inference, invoke with:")
         print("    python scripts/run_nli_smoke_test.py --live")
-        print("\nExiting without downloading weights (safe mode).")
+        print("\nExiting without running inference (safe mode).")
         return 0
 
     print("=" * 70)
@@ -57,7 +58,8 @@ def main() -> int:
     print("=" * 70)
 
     config = NLIConfig(
-        model_id="joeddav/xlm-roberta-large-xnli",
+        model_id="MoritzLaurer/mDeBERTa-v3-base-xnli-multilingual-nli-2mil7",
+        model_revision="b5113eb38ab63efdd7f280f8c144ea8b13f978ce",
         device="cpu",
         batch_size=args.batch_size,
         max_length=512,
@@ -66,26 +68,62 @@ def main() -> int:
 
     test_cases = [
         {
+            "id": "EN-1",
             "lang": "en",
-            "name": "English Entailment Test",
-            "premise": "The Reserve Bank of India raised interest rates by 25 basis points on Wednesday amid inflation concerns.",
-            "hypothesis": "India's central bank increased interest rates.",
+            "name": "English Entailment",
+            "expected": "entailment",
+            "premise": "The company reported record quarterly revenue driven by international sales.",
+            "hypothesis": "The company generated higher revenue in the quarter.",
         },
         {
+            "id": "EN-2",
+            "lang": "en",
+            "name": "English Contradiction",
+            "expected": "contradiction",
+            "premise": "All thirty participants successfully finished the marathon in under four hours.",
+            "hypothesis": "None of the participants completed the marathon.",
+        },
+        {
+            "id": "EN-3",
+            "lang": "en",
+            "name": "English Neutral",
+            "expected": "neutral",
+            "premise": "The Prime Minister announced new economic policies during a press conference in New Delhi.",
+            "hypothesis": "The Prime Minister will travel to Mumbai tomorrow.",
+        },
+        {
+            "id": "HI-4",
             "lang": "hi",
-            "name": "Hindi Entailment Test",
-            "premise": "भारतीय अंतरिक्ष अनुसंधान संगठन (इसरो) ने चंद्रयान-3 के लैंडर विक्रम को चंद्रमा की सतह पर सफलतापूर्वक उतारा।",
-            "hypothesis": "इसरो का चंद्रयान-3 चंद्रमा पर उतरा।",
+            "name": "Hindi Entailment",
+            "expected": "entailment",
+            "premise": "कंपनी ने अंतरराष्ट्रीय बिक्री के दम पर रिकॉर्ड तिमाही राजस्व दर्ज किया।",
+            "hypothesis": "कंपनी ने इस तिमाही में अधिक राजस्व अर्जित किया।",
+        },
+        {
+            "id": "HI-5",
+            "lang": "hi",
+            "name": "Hindi Contradiction",
+            "expected": "contradiction",
+            "premise": "सभी तीस प्रतिभागियों ने चार घंटे से कम समय में सफलतापूर्वक मैराथन पूरी की।",
+            "hypothesis": "किसी भी प्रतिभागी ने मैराथन पूरी नहीं की।",
+        },
+        {
+            "id": "HI-6",
+            "lang": "hi",
+            "name": "Hindi Neutral",
+            "expected": "neutral",
+            "premise": "प्रधानमंत्री ने नई दिल्ली में एक संवाददाता सम्मेलन के दौरान नई आर्थिक नीतियों की घोषणा की।",
+            "hypothesis": "प्रधानमंत्री कल मुंबई की यात्रा करेंगे।",
         },
     ]
 
     try:
-        print("\nLoading tokenizer and model (this may take time on first download)...")
+        print("\nLoading tokenizer and model from local cache...")
         verifier.load_model()
         print("Model loaded successfully.")
 
         for tc in test_cases:
-            print(f"\n--- {tc['name']} ({tc['lang']}) ---")
+            print(f"\n--- [{tc['id']}] {tc['name']} ({tc['lang']}) ---")
             print(f"Premise:    {tc['premise']}")
             print(f"Hypothesis: {tc['hypothesis']}")
 
@@ -95,13 +133,16 @@ def main() -> int:
                 language=tc["lang"],
             )
 
-            print(f"Predicted Label:      {result.predicted_label}")
+            match = (result.predicted_label == tc["expected"])
+            status_flag = "MATCH" if match else "BORDERLINE/DIFF"
+            print(f"Expected:             {tc['expected']}")
+            print(f"Predicted Label:      {result.predicted_label} [{status_flag}]")
             print(f"Entailment Prob:      {result.entailment_prob:.4f}")
             print(f"Neutral Prob:         {result.neutral_prob:.4f}")
             print(f"Contradiction Prob:   {result.contradiction_prob:.4f}")
             print(f"Inference Latency:    {result.latency_ms:.1f} ms")
 
-        print("\nAll live smoke test cases passed successfully.")
+        print("\nAll live smoke test cases executed successfully.")
         return 0
 
     except VerificationDependencyError as exc:
