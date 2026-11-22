@@ -655,3 +655,204 @@ def load_claim_verification_results(file_path: Union[str, Path]) -> List[ClaimVe
                 data = json.loads(line_str)
                 results.append(ClaimVerificationResult.from_dict(data))
     return results
+
+
+def aggregate_claim_verification_results(
+    results: Sequence[Union[ClaimVerificationResult, Dict[str, Any]]],
+) -> Dict[str, Any]:
+    """Aggregate passage-level verification results into claim-level and summary-level metrics.
+
+    Level 1: Passage to Claim Aggregation (Existential Grounding):
+        Each atomic claim is verified against top-k BM25 evidence passages.
+        A claim is deemed 'entailment' if any candidate passage entails it (max entailment >= 0.50
+        or top entailment passage predicts 'entailment').
+        Otherwise, if any passage contradicts it (max contradiction >= 0.50), it is 'contradiction'.
+        Otherwise, it is 'neutral' (unsupported / no evidence).
+
+    Level 2: Claim to Summary Aggregation:
+        Calculates total claims, counts/ratios for entailment, neutral, contradiction,
+        and mean maximum entailment score across claims.
+    """
+    if not results:
+        return {
+            "strategy": "hybrid_claim_level",
+            "total_claims": 0,
+            "entailed_claims": 0,
+            "neutral_claims": 0,
+            "contradicted_claims": 0,
+            "entailment_ratio": 0.0,
+            "neutral_ratio": 0.0,
+            "contradiction_ratio": 0.0,
+            "mean_claim_entailment": 0.0,
+            "claims_detail": [],
+        }
+
+    claims_order: List[str] = []
+    claims_map: Dict[str, List[Dict[str, Any]]] = {}
+    for r in results:
+        r_dict = r.to_dict() if hasattr(r, "to_dict") else dict(r)
+        cid = str(r_dict.get("claim_id", ""))
+        if cid not in claims_map:
+            claims_order.append(cid)
+            claims_map[cid] = []
+        claims_map[cid].append(r_dict)
+
+    claims_detail: List[Dict[str, Any]] = []
+    entailed_count = 0
+    contradicted_count = 0
+    neutral_count = 0
+    entail_scores: List[float] = []
+
+    for cid in claims_order:
+        passages = claims_map[cid]
+        first_p = passages[0]
+        claim_text = first_p.get("atomic_claim_text", "")
+        sent_idx = first_p.get("original_sentence_index", 0)
+
+        valid_passages = [p for p in passages if p.get("status") in ("SUCCESS", "NO_EVIDENCE")]
+        eval_passages = valid_passages if valid_passages else passages
+
+        max_entail = max((float(p.get("entailment_prob", 0.0)) for p in eval_passages), default=0.0)
+        max_contra = max((float(p.get("contradiction_prob", 0.0)) for p in eval_passages), default=0.0)
+        best_p = max(eval_passages, key=lambda p: float(p.get("entailment_prob", 0.0)), default=first_p)
+
+        best_pred = str(best_p.get("predicted_label", "")).lower()
+        if best_pred == "entailment" or max_entail >= 0.50:
+            c_label = "entailment"
+            entailed_count += 1
+        elif any(str(p.get("predicted_label", "")).lower() == "contradiction" for p in eval_passages) or max_contra >= 0.50:
+            c_label = "contradiction"
+            contradicted_count += 1
+        else:
+            c_label = "neutral"
+            neutral_count += 1
+
+        entail_scores.append(max_entail)
+        claims_detail.append({
+            "claim_id": cid,
+            "sentence_index": sent_idx,
+            "atomic_claim_text": claim_text,
+            "predicted_label": c_label,
+            "max_entailment_prob": round(max_entail, 4),
+            "max_contradiction_prob": round(max_contra, 4),
+            "best_evidence_rank": int(best_p.get("evidence_rank", 1)),
+            "best_evidence_score": round(float(best_p.get("evidence_score", 0.0)), 2),
+            "best_evidence_passage": str(best_p.get("evidence_passage", ""))[:120],
+            "passage_evaluations_count": len(passages),
+        })
+
+    n = len(claims_order)
+    return {
+        "strategy": "hybrid_claim_level",
+        "total_claims": n,
+        "entailed_claims": entailed_count,
+        "neutral_claims": neutral_count,
+        "contradicted_claims": contradicted_count,
+        "entailment_ratio": round(entailed_count / n, 4) if n > 0 else 0.0,
+        "neutral_ratio": round(neutral_count / n, 4) if n > 0 else 0.0,
+        "contradiction_ratio": round(contradicted_count / n, 4) if n > 0 else 0.0,
+        "mean_claim_entailment": round(sum(entail_scores) / n, 4) if n > 0 else 0.0,
+        "claims_detail": claims_detail,
+    }
+
+
+def aggregate_sentence_verification_results(
+    results: Sequence[Union[Any, Dict[str, Any]]],
+) -> Dict[str, Any]:
+    """Aggregate sentence-level verification results into summary-level metrics."""
+    if not results:
+        return {
+            "strategy": "sentence_level",
+            "total_sentences": 0,
+            "entailed_sentences": 0,
+            "neutral_sentences": 0,
+            "contradicted_sentences": 0,
+            "entailment_ratio": 0.0,
+            "neutral_ratio": 0.0,
+            "contradiction_ratio": 0.0,
+            "mean_sentence_entailment": 0.0,
+            "sentences_detail": [],
+        }
+
+    sentences_detail: List[Dict[str, Any]] = []
+    entailed_count = 0
+    contradicted_count = 0
+    neutral_count = 0
+    entail_scores: List[float] = []
+
+    for r in results:
+        r_dict = r.to_dict() if hasattr(r, "to_dict") else dict(r)
+        label = str(r_dict.get("predicted_label", "")).lower()
+        entail_prob = float(r_dict.get("entailment_prob", 0.0))
+        contra_prob = float(r_dict.get("contradiction_prob", 0.0))
+        neut_prob = float(r_dict.get("neutral_prob", 0.0))
+
+        if label == "entailment":
+            entailed_count += 1
+        elif label == "contradiction":
+            contradicted_count += 1
+        else:
+            neutral_count += 1
+
+        entail_scores.append(entail_prob)
+        sentences_detail.append({
+            "sentence_index": int(r_dict.get("sentence_index", 0)),
+            "sentence_text": str(r_dict.get("sentence_text", "")),
+            "predicted_label": label,
+            "entailment_prob": round(entail_prob, 4),
+            "neutral_prob": round(neut_prob, 4),
+            "contradiction_prob": round(contra_prob, 4),
+        })
+
+    m = len(results)
+    return {
+        "strategy": "sentence_level",
+        "total_sentences": m,
+        "entailed_sentences": entailed_count,
+        "neutral_sentences": neutral_count,
+        "contradicted_sentences": contradicted_count,
+        "entailment_ratio": round(entailed_count / m, 4) if m > 0 else 0.0,
+        "neutral_ratio": round(neutral_count / m, 4) if m > 0 else 0.0,
+        "contradiction_ratio": round(contradicted_count / m, 4) if m > 0 else 0.0,
+        "mean_sentence_entailment": round(sum(entail_scores) / m, 4) if m > 0 else 0.0,
+        "sentences_detail": sentences_detail,
+    }
+
+
+def aggregate_document_verification_results(
+    results: Sequence[Union[Any, Dict[str, Any]]],
+) -> Dict[str, Any]:
+    """Extract document-level verification metrics."""
+    if not results:
+        return {
+            "strategy": "whole_document",
+            "predicted_label": "error",
+            "entailment_prob": 0.0,
+            "neutral_prob": 0.0,
+            "contradiction_prob": 0.0,
+            "status": "FAILED",
+        }
+    r = results[0]
+    r_dict = r.to_dict() if hasattr(r, "to_dict") else dict(r)
+    return {
+        "strategy": "whole_document",
+        "predicted_label": str(r_dict.get("predicted_label", "")).lower(),
+        "entailment_prob": round(float(r_dict.get("entailment_prob", 0.0)), 4),
+        "neutral_prob": round(float(r_dict.get("neutral_prob", 0.0)), 4),
+        "contradiction_prob": round(float(r_dict.get("contradiction_prob", 0.0)), 4),
+        "status": str(r_dict.get("status", "SUCCESS")),
+    }
+
+
+def aggregate_verification_results(
+    strategy: str,
+    results: Sequence[Any],
+) -> Dict[str, Any]:
+    """Unified aggregator dispatching to the appropriate strategy aggregator."""
+    if strategy == "hybrid_claim_level":
+        return aggregate_claim_verification_results(results)
+    elif strategy == "sentence_level":
+        return aggregate_sentence_verification_results(results)
+    elif strategy == "whole_document":
+        return aggregate_document_verification_results(results)
+    return {}

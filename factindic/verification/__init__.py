@@ -33,6 +33,10 @@ from factindic.verification.rule_claim_extractor import (
 from factindic.verification.claim_verifier import (
     ClaimVerificationResult,
     HybridClaimVerifier,
+    aggregate_claim_verification_results,
+    aggregate_document_verification_results,
+    aggregate_sentence_verification_results,
+    aggregate_verification_results,
     load_claim_verification_results,
     save_claim_verification_results,
 )
@@ -87,4 +91,8 @@ __all__ = [
     "segment_article_into_passages",
     "split_into_sentences",
     "tokenize_text",
+    "aggregate_claim_verification_results",
+    "aggregate_document_verification_results",
+    "aggregate_sentence_verification_results",
+    "aggregate_verification_results",
 ]

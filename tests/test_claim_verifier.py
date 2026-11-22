@@ -446,3 +446,56 @@ def test_claim_verification_serialization_roundtrip(tmp_path: Path):
     assert loaded_result.model_id == result.model_id
     assert loaded_result.verification_strategy == result.verification_strategy
     assert loaded_result.status == result.status
+
+
+def test_aggregate_claim_verification_results():
+    """Tests passage-to-claim and claim-to-summary aggregation rules."""
+    from factindic.verification.claim_verifier import (
+        aggregate_claim_verification_results,
+        aggregate_verification_results,
+    )
+
+    # Claim 1: 2 passages (rank 1 neutral 0.3, rank 2 entailment 0.85) -> entailed
+    c1_p1 = ClaimVerificationResult(
+        record_id="rec_01", claim_id="c1", original_sentence_index=0, original_sentence_text="s1",
+        atomic_claim_text="Claim 1 text", evidence_passage="Passage 1", evidence_start_offset=0,
+        evidence_end_offset=10, evidence_rank=1, evidence_score=15.0, language="en",
+        predicted_label="neutral", entailment_prob=0.3, neutral_prob=0.6, contradiction_prob=0.1
+    )
+    c1_p2 = ClaimVerificationResult(
+        record_id="rec_01", claim_id="c1", original_sentence_index=0, original_sentence_text="s1",
+        atomic_claim_text="Claim 1 text", evidence_passage="Passage 2", evidence_start_offset=20,
+        evidence_end_offset=30, evidence_rank=2, evidence_score=12.0, language="en",
+        predicted_label="entailment", entailment_prob=0.85, neutral_prob=0.1, contradiction_prob=0.05
+    )
+    # Claim 2: 1 passage (contradiction 0.75) -> contradicted
+    c2_p1 = ClaimVerificationResult(
+        record_id="rec_01", claim_id="c2", original_sentence_index=1, original_sentence_text="s2",
+        atomic_claim_text="Claim 2 text", evidence_passage="Passage 3", evidence_start_offset=40,
+        evidence_end_offset=50, evidence_rank=1, evidence_score=9.0, language="en",
+        predicted_label="contradiction", entailment_prob=0.05, neutral_prob=0.2, contradiction_prob=0.75
+    )
+
+    agg = aggregate_claim_verification_results([c1_p1, c1_p2, c2_p1])
+
+    assert agg["total_claims"] == 2
+    assert agg["entailed_claims"] == 1
+    assert agg["contradicted_claims"] == 1
+    assert agg["neutral_claims"] == 0
+    assert agg["entailment_ratio"] == 0.5
+    assert agg["contradiction_ratio"] == 0.5
+    assert agg["mean_claim_entailment"] == round((0.85 + 0.05) / 2, 4)
+
+    # Claim detail check
+    c1_detail = next(d for d in agg["claims_detail"] if d["claim_id"] == "c1")
+    assert c1_detail["predicted_label"] == "entailment"
+    assert c1_detail["max_entailment_prob"] == 0.85
+
+    c2_detail = next(d for d in agg["claims_detail"] if d["claim_id"] == "c2")
+    assert c2_detail["predicted_label"] == "contradiction"
+    assert c2_detail["max_contradiction_prob"] == 0.75
+
+    # Unified dispatcher check
+    unified_agg = aggregate_verification_results("hybrid_claim_level", [c1_p1, c1_p2, c2_p1])
+    assert unified_agg["total_claims"] == 2
+    assert unified_agg["entailment_ratio"] == 0.5

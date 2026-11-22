@@ -149,6 +149,7 @@ class ExperimentRecord:
     error_message: Optional[str] = None
     timestamp_utc: str = ""
     source_dataset: Optional[str] = None
+    aggregated_metrics: Optional[Dict[str, Any]] = None
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert experiment record to dictionary."""
@@ -175,6 +176,7 @@ class ExperimentRecord:
             error_message=data.get("error_message"),
             timestamp_utc=str(data.get("timestamp_utc", "")),
             source_dataset=data.get("source_dataset"),
+            aggregated_metrics=data.get("aggregated_metrics"),
         )
 
 

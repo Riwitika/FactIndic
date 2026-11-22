@@ -58,7 +58,10 @@ data/benchmark/*
 !data/benchmark/benchmark_manifest.json
 
 # Benchmark results (generated summaries and raw article text)
-data/benchmark_results/
+data/benchmark_results/*
+!data/benchmark_results/controlled_run/
+data/benchmark_results/controlled_run/*
+!data/benchmark_results/controlled_run/local_mdeberta/
 
 # Response cache databases
 .cache/

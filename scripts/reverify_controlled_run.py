@@ -50,6 +50,7 @@ from factindic.verification import (
     SentenceLevelVerifier,
     WholeDocumentVerifier,
     XNLIVerifier,
+    aggregate_verification_results,
 )
 from factindic.verification.claim_extractor import CLAIMS_JSON_SCHEMA
 
@@ -309,6 +310,12 @@ def reverify_controlled_experiment(
 
             verif_latency_ms = round((time.time() - t_verif_start) * 1000, 2)
 
+            agg_metrics = (
+                aggregate_verification_results(verif_strat, verification_results)
+                if status == "SUCCESS"
+                else None
+            )
+
             exp_rec = ExperimentRecord(
                 condition_id=cond_id.value,
                 source_record_id=art_id,
@@ -327,6 +334,7 @@ def reverify_controlled_experiment(
                 error_message=error_msg,
                 timestamp_utc=datetime.now(timezone.utc).isoformat(),
                 source_dataset=gen_rec.source_dataset,
+                aggregated_metrics=agg_metrics,
             )
 
             print(f"    -> Status: {exp_rec.status} (verif_latency: {exp_rec.verification_latency_ms}ms)", flush=True)
@@ -364,6 +372,83 @@ def reverify_controlled_experiment(
     except ImportError:
         trans_ver = "unavailable"
 
+    model_gen_id = next((r.model_id for r in preserved_generations.values() if r.model_id), "command-a-plus-05-2026")
+    provider_gen = next((r.provider for r in preserved_generations.values() if r.provider), "cohere")
+
+    # Generate Structured Summary Tables
+    summary_rows: List[Dict[str, Any]] = []
+    for cond_id_val in ["C1", "C2", "C3", "C4", "C5", "C6"]:
+        cond_records = [r for r in reverified_results if r.condition_id == cond_id_val]
+        if not cond_records:
+            continue
+        c_def = CONDITION_DEFINITIONS[ConditionID(cond_id_val)]
+        strat_name = c_def["prompt_strategy"].value
+        verif_strat_name = c_def["verification_strategy"]
+
+        for lang_filter in ["en", "hi", "all"]:
+            subset = cond_records if lang_filter == "all" else [r for r in cond_records if r.language == lang_filter]
+            if not subset:
+                continue
+
+            success_sub = [r for r in subset if r.status == "SUCCESS" and r.aggregated_metrics]
+            count_total = len(subset)
+            count_success = len(success_sub)
+
+            # Compute macro metrics
+            entail_scores: List[float] = []
+            entail_ratios: List[float] = []
+            contra_ratios: List[float] = []
+            neut_ratios: List[float] = []
+
+            for r in success_sub:
+                agg = r.aggregated_metrics or {}
+                if verif_strat_name == "whole_document":
+                    entail_scores.append(float(agg.get("entailment_prob", 0.0)))
+                    is_ent = 1.0 if agg.get("predicted_label") == "entailment" else 0.0
+                    is_contra = 1.0 if agg.get("predicted_label") == "contradiction" else 0.0
+                    is_neut = 1.0 if agg.get("predicted_label") == "neutral" else 0.0
+                    entail_ratios.append(is_ent)
+                    contra_ratios.append(is_contra)
+                    neut_ratios.append(is_neut)
+                elif verif_strat_name == "sentence_level":
+                    entail_scores.append(float(agg.get("mean_sentence_entailment", 0.0)))
+                    entail_ratios.append(float(agg.get("entailment_ratio", 0.0)))
+                    contra_ratios.append(float(agg.get("contradiction_ratio", 0.0)))
+                    neut_ratios.append(float(agg.get("neutral_ratio", 0.0)))
+                elif verif_strat_name == "hybrid_claim_level":
+                    entail_scores.append(float(agg.get("mean_claim_entailment", 0.0)))
+                    entail_ratios.append(float(agg.get("entailment_ratio", 0.0)))
+                    contra_ratios.append(float(agg.get("contradiction_ratio", 0.0)))
+                    neut_ratios.append(float(agg.get("neutral_ratio", 0.0)))
+
+            mean_lat = round(sum(r.verification_latency_ms for r in subset) / count_total, 2) if count_total else 0.0
+            n_sub = len(success_sub)
+            summary_rows.append({
+                "condition_id": cond_id_val,
+                "prompt_strategy": strat_name,
+                "verification_strategy": verif_strat_name,
+                "language": lang_filter,
+                "total_evaluations": count_total,
+                "success_evaluations": count_success,
+                "macro_mean_entailment_score": round(sum(entail_scores) / n_sub, 4) if n_sub else 0.0,
+                "macro_entailment_ratio": round(sum(entail_ratios) / n_sub, 4) if n_sub else 0.0,
+                "macro_contradiction_ratio": round(sum(contra_ratios) / n_sub, 4) if n_sub else 0.0,
+                "macro_neutral_ratio": round(sum(neut_ratios) / n_sub, 4) if n_sub else 0.0,
+                "mean_latency_ms": mean_lat,
+            })
+
+    out_summary_json = out_dir / "experiment_summary_table.json"
+    with open(out_summary_json, "w", encoding="utf-8") as f:
+        json.dump(summary_rows, f, indent=2, ensure_ascii=False)
+
+    out_summary_csv = out_dir / "experiment_summary_table.csv"
+    if summary_rows:
+        keys = list(summary_rows[0].keys())
+        with open(out_summary_csv, "w", encoding="utf-8") as f:
+            f.write(",".join(keys) + "\n")
+            for row in summary_rows:
+                f.write(",".join(str(row[k]) for k in keys) + "\n")
+
     quota_blocked_count = sum(1 for r in reverified_results if r.status == "QUOTA_BLOCKED")
     audit_report = {
         "timestamp_utc": start_time_utc,
@@ -371,9 +456,10 @@ def reverify_controlled_experiment(
         "elapsed_seconds": t_elapsed,
         "experiment_name": "FactIndic-Six-Condition-Benchmark-Experiment-Reverified",
         "regenerated_summaries": False,
-        "model_id": llm_client.model_id,
-        "provider": llm_client.provider,
+        "generation_model_id": model_gen_id,
+        "generation_provider": provider_gen,
         "nli_model_id": nli_verifier.config.model_id,
+        "nli_model_revision": getattr(nli_verifier.config, "model_revision", "b5113eb38ab63efdd7f280f8c144ea8b13f978ce"),
         "dependencies": {
             "torch": torch_ver,
             "transformers": trans_ver,
@@ -396,6 +482,8 @@ def reverify_controlled_experiment(
         "output_files": {
             "results_jsonl": str(out_results_file.name),
             "audit_json": str(out_audit_file.name),
+            "summary_table_json": str(out_summary_json.name),
+            "summary_table_csv": str(out_summary_csv.name),
         },
     }
 
@@ -406,6 +494,7 @@ def reverify_controlled_experiment(
         json.dump(audit_report, f, indent=2, ensure_ascii=False)
 
     print(f"[✓] Saved reverified results to {out_results_file} ({len(reverified_results)} records)")
+    print(f"[✓] Saved summary table to {out_summary_json} and {out_summary_csv}")
     print(f"[✓] Saved audit report to {out_audit_file}")
     return audit_report
 
@@ -429,7 +518,7 @@ def main():
     )
     parser.add_argument(
         "--output-dir",
-        default="data/benchmark_results/controlled_run/reverified",
+        default="data/benchmark_results/controlled_run/local_mdeberta",
         help="Destination directory for reverified results and audit",
     )
     parser.add_argument(
