@@ -100,15 +100,33 @@ Table 1 summarizes the primary metrics across all six experimental conditions. M
 
 ### 2.4 Prompt A versus Prompt B Comparative Analysis
 
-Across both languages and verification strategies, Prompt B (Factuality-Aware) exhibited two prominent, consistent trends:
+Comparing Prompt A (Standard Baseline) and Prompt B (Factuality-Aware Constrained) across the fine-grained verification strategies reveals nuanced, subgroup-dependent outcomes rather than a uniform improvement across all conditions.
 
-1. **Consistent Suppression of Contradiction / Hallucination Rates:**
-   - **Sentence-Level Verification:** Overall macro contradiction ratio fell from **0.0838 (C3)** to **0.0588 (C4)** (a **-29.8% relative reduction**). In Hindi specifically, macro contradiction dropped from 0.1022 to 0.0550 (-46.2%).
-   - **Hybrid Claim-Level Verification:** Overall macro contradiction ratio fell from **0.0610 (C5)** to **0.0410 (C6)** (a **-32.8% relative reduction**). In Hindi specifically, macro contradiction dropped from 0.1067 to 0.0286 (-73.2%).
-   - Whole-document verification recorded 0.0000 contradiction in all conditions due to neutral-class dominance.
-2. **Shift Toward Conservative Framing and Elevated Neutrality:**
-   - In English whole-document verification, macro entailment increased from 0.0000 to 0.4000.
-   - In fine-grained verification, however, Prompt B often yielded a higher proportion of `neutral` evaluations (English Sentence neutral ratio: 0.3906 in C3 vs. 0.5125 in C4; Overall Hybrid neutral ratio: 0.3598 in C5 vs. 0.5327 in C6). Rather than asserting unsupported conjectures, Prompt B constrained the generation to cautious, unelaborated propositions that mDeBERTa categorized as neutral when evidence was incomplete.
+Table 2 presents the verified macro contradiction ratios across fine-grained verification strategies and languages:
+
+#### Table 2: Macro Contradiction Ratios Across Verification Strategies and Languages
+
+| Comparison | Prompt A | Prompt B | Absolute Difference | Relative Change |
+|:---|---:|---:|---:|---:|
+| **Sentence-Level English** | 6.54% | 6.25% | -0.29% | -4.4% |
+| **Sentence-Level Hindi** | 10.22% | 5.50% | -4.72% | -46.2% |
+| **Sentence-Level Overall** | **8.38%** | **5.88%** | **-2.50%** | **-29.8%** |
+| **Hybrid English** | 1.54% | 5.33% | +3.79% | +246.1% |
+| **Hybrid Hindi** | 10.67% | 2.86% | -7.81% | -73.2% |
+| **Hybrid Overall** | **6.10%** | **4.10%** | **-2.00%** | **-32.8%** |
+
+*(Note: Whole-document verification yielded 0.00% contradiction across all conditions due to neutral-class dominance and is omitted from the table above).*
+
+Key empirical observations from this comparison include:
+
+1. **Overall Macro Contradiction Reductions:** When pooling across languages, Prompt B reduced the overall macro contradiction ratio in both fine-grained verification strategies—from **8.38% (C3) to 5.88% (C4)** in sentence-level verification (-29.8% relative), and from **6.10% (C5) to 4.10% (C6)** in hybrid claim-level verification (-32.8% relative).
+2. **Subgroup Variation and Exceptions:** The effect of Prompt B varied substantially across languages and verification strategies:
+   - In Hindi, Prompt B consistently lowered contradiction ratios under both sentence-level (10.22% to 5.50%) and hybrid verification (10.67% to 2.86%).
+   - In English sentence-level verification, the reduction was marginal (6.54% to 6.25%).
+   - In English hybrid verification, Prompt B actually showed a **higher contradiction ratio** (5.33% vs. 1.54%, corresponding to 2 contradicted claims out of 43 under Prompt B vs. 1 out of 63 under Prompt A).
+   - Therefore, the empirical evidence does not support a claim that Prompt B consistently improves factuality in every subgroup.
+3. **Exploratory Pilot Scale:** Because each sub-condition contains exactly 5 summaries, small absolute shifts (e.g., 1 vs. 2 contradicted claims) produce noticeable percentage changes. These findings are exploratory indications from a small pilot sample and must not be interpreted as statistically conclusive or universally generalizable.
+4. **Shift Toward Neutrality:** In several conditions, Prompt B summaries exhibited a higher proportion of `neutral` evaluations (e.g., English sentence-level neutral ratio rising from 39.06% in C3 to 51.25% in C4; overall hybrid neutral ratio rising from 35.98% in C5 to 53.27% in C6). Rather than asserting unsupported claims, Prompt B frequently produced shorter, more restrained statements that were categorized as neutral when evidence was incomplete.
 
 ---
 
@@ -132,9 +150,9 @@ The empirical data highlights stark operational differences among the three veri
 
 ### 2.6 Computational Efficiency and Latency Profiles
 
-Table 2 details the runtime characteristics observed during local CPU execution.
+Table 3 details the runtime characteristics observed during local CPU execution.
 
-#### Table 2: Latency and Computational Throughput Profiles
+#### Table 3: Latency and Computational Throughput Profiles
 *(All runs executed on Intel Core i5 CPU, single-process, batch size 1).*
 
 | Strategy | Condition | Total Wall-Clock Time (s) | Mean Latency per Summary (ms) | Min Latency (ms) | Max Latency (ms) | Speedup vs. Sentence Strategy |
@@ -194,11 +212,12 @@ Sentence-level verification exhibited quadratic scaling with summary length beca
 
 ### 3.1 Prompt B Impact: Does Factuality Prompting Improve Reliability?
 
-The empirical results provide positive evidence supporting Hypothesis 1: **Factuality-aware prompting (Prompt B) consistently suppresses factual contradictions.**
-- In sentence-level verification, Prompt B reduced macro contradiction ratios by **29.8% relative** overall (falling from 0.0838 to 0.0588), with Hindi contradiction dropping by **46.2% relative** (from 0.1022 to 0.0550).
-- In hybrid claim-level verification, Prompt B reduced macro contradiction ratios by **32.8% relative** overall (falling from 0.0610 to 0.0410), with Hindi contradiction dropping by **73.2% relative** (from 0.1067 to 0.0286).
-
-However, the mechanism of improvement is not a uniform inflation of entailment scores, but rather an **epistemic compression**. Prompt B prompts the generation engine to avoid speculative generalizations, resulting in shorter, more direct summaries that discard peripheral, risky narrative claims. Consequently, while hallucinations are suppressed, the neutral proportion frequently increases (e.g., English sentence-level neutral ratio rising from 0.3906 in C3 to 0.5125 in C4). Prompt B shifts the model from over-confident fabrication toward cautious under-commitment.
+The empirical findings offer mixed, nuanced evidence regarding Hypothesis 1:
+- **Overall Effect:** At the aggregate level across both languages, Prompt B reduced the overall macro contradiction ratio in both fine-grained verification strategies (sentence-level: 8.38% to 5.88%; hybrid: 6.10% to 4.10%).
+- **Subgroup Divergence:** However, this reduction was primarily driven by the Hindi subset (where sentence-level contradiction decreased from 10.22% to 5.50%, and hybrid contradiction plunged from 10.67% to 2.86%). For English, sentence-level contradiction was virtually unchanged (6.54% vs. 6.25%), while hybrid verification recorded a higher contradiction ratio under Prompt B (5.33% vs. 1.54%).
+- **Absence of Universal Superiority:** Consequently, the benchmark does not demonstrate that Prompt B universally or consistently improves factual reliability across every language and verification architecture. 
+- **Epistemic Compression Mechanism:** Where Prompt B did suppress contradictions, the primary operational mechanism appears to be an epistemic compression rather than an increase in verified entailment. By discouraging ungrounded details, Prompt B induced shorter and more conservative summaries, which often elevated the neutral ratio (e.g., English sentence-level neutral ratio rising from 39.06% to 51.25%).
+- **Sample Limitations:** Given the small sample size ($N=5$ summaries per subgroup), these observations must be treated as preliminary exploratory findings warranting larger-scale replication, rather than definitive proof of factuality enhancement.
 
 ### 3.2 The Whole-Document Neutral Collapse Mechanism
 
@@ -224,20 +243,28 @@ However, the hybrid strategy introduces a new vulnerability: **retrieval error p
 
 ### 3.5 Cross-Lingual Discrepancies and the Generation Scratchpad Phenomenon
 
-A detailed qualitative inspection of the machine-readable outputs revealed an unexpected, critical generative behavior in the Hindi benchmark subset:
-- In both Prompt A and Prompt B for Hindi, the generation model (`command-a-plus-05-2026`) exhibited **prompt leakage** and **English chain-of-thought scratchpad generation**. Instead of outputting exclusively Devanagari Hindi summaries, the model prepended or substituted English planning text (e.g., `"The task: generate a concise summary using only information supported by the article... Let's extract key points: - British Defence Ministry denies..."`).
-- In Condition C6 (Prompt B, Hindi), this phenomenon dramatically influenced the evaluation metrics:
-  1. **Lexical Mismatch in BM25:** The extracted claims were in English, while the source news article in the benchmark database was in Devanagari Hindi. Because BM25 relies on exact lexical term matching, English query tokens yielded zero lexical overlap against Devanagari text.
-  2. **High Neutrality:** Lacking relevant Devanagari passages, BM25 returned arbitrary passages. Cross-encoding English claims against unaligned Hindi passages forced mDeBERTa to output `neutral` ($P(\text{neutral}) \approx 1.0$) for **78.95% of claims** (45 out of 57 claims in C6 Hindi).
-  3. **Sentence-Level Divergence:** In contrast, Sentence-Level NLI (C4) achieved an **80.25% entailment ratio** on the exact same summaries because mDeBERTa's multilingual pretraining cross-attended the English scratchpad sentences across the entire Hindi document, finding semantic alignment where lexical BM25 failed.
+A detailed qualitative inspection of the machine-readable outputs revealed an unexpected generative behavior in the Hindi benchmark subset:
 
-This finding demonstrates that **cross-lingual lexical retrieval is brittle when generative models switch languages internally**. In multilingual pipelines, BM25 retrieval must be paired with multilingual dense retrieval (e.g., multilingual embeddings) or language-enforcing generation post-processors.
+#### Observed Evidence
+1. **Planning Text / Scratchpad Output:** In several Hindi Prompt B summaries (notably records `international-50448073`, `060528_soldiers_desert`, and `international-40883742`), the generator (`command-a-plus-05-2026`) emitted English planning or scratchpad-like text alongside or in place of pure Devanagari Hindi summaries (e.g., `"The task: generate a concise summary using only information supported by the article... Let's extract key points: - British Defence Ministry denies..."`).
+2. **Evaluation Metrics Divergence in C6 vs. C4:**
+   - Under Hybrid Claim-Level verification (C6), these Hindi Prompt B summaries exhibited a macro neutral ratio of **59.96%** and a micro neutral ratio of **78.95%** (45 out of 57 claims were neutral), with a macro entailment ratio of only **37.18%**.
+   - Under Sentence-Level verification (C4), the exact same frozen summaries evaluated against the exact same source documents achieved a macro entailment ratio of **80.25%** and a macro neutral ratio of only **14.25%**.
+
+#### Proposed Explanation (Hypothesis)
+We propose the following hypothesis to explain this sharp divergence between verification architectures on identical summaries:
+- **Lexical Overlap Bottleneck in BM25:** The extracted atomic claims from the scratchpad sections were phrased in English, whereas the source news articles in the benchmark repository were in Devanagari Hindi. Because BM25 relies on exact lexical token matching, English query terms have little to no lexical overlap with Devanagari script passages.
+- **Degraded Retrieval Relevance:** This lexical mismatch can substantially degrade BM25 retrieval relevance, causing the retriever to return poorly matched evidence passages.
+- **Neutral Predictions from Poorly Matched Evidence:** When the mDeBERTa cross-encoder evaluates an English claim against poorly matched Devanagari passages, it cannot establish semantic grounding and appropriately predicts `neutral` (unsupported), driving the high neutral ratio observed in C6.
+- **Cross-Lingual Attention in Sentence-Level NLI:** In contrast, Sentence-Level NLI (C4) provides the entire source document to mDeBERTa. Because mDeBERTa-v3 was pre-trained on multilingual parallel corpora (including XNLI and Hindi data), its full-context cross-attention layers can align the semantic content of English sentences directly with Hindi source paragraphs without relying on lexical token matches.
+
+*Distinction Between Observation and Explanation:* The presence of English scratchpad text and the contrasting neutral/entailment distributions across C6 and C4 are directly documented empirical observations. The role of BM25 lexical mismatch as the primary driver of this disparity is a compelling and theoretically sound explanatory hypothesis, but the pilot experiment did not isolate a dedicated dense-retrieval ablation to formally prove causation.
 
 ### 3.6 Trade-Off Matrix: Granularity, Diagnostic Resolution, and Latency
 
-Table 3 synthesizes the operational trade-offs observed across the three verification strategies.
+Table 4 synthesizes the operational trade-offs observed across the three verification strategies.
 
-#### Table 3: Qualitative and Operational Strategy Comparison
+#### Table 4: Qualitative and Operational Strategy Comparison
 
 | Evaluation Dimension | Whole-Document NLI | Sentence-Level NLI | Hybrid Claim-Level NLI |
 |:---|:---|:---|:---|
@@ -269,11 +296,10 @@ To maintain scientific integrity, the findings presented in this report must be 
 
 ## 5. Conclusion and Recommendations
 
-The controlled benchmark demonstrates that **factuality-aware prompting (Prompt B) consistently suppresses factual contradictions by approximately 30% to 33% relative across English and Hindi summaries**, primarily by discouraging speculative narrative generation and inducing concise, evidence-grounded phrasing.
-
-Among verification architectures:
-- **Whole-Document NLI** is empirically invalidated due to severe neutral collapse caused by document-length attention bias.
-- **Sentence-Level NLI** provides high entailment sensitivity and robust cross-lingual semantic alignment, but suffers from steep computational overhead on CPU hardware.
-- **Hybrid Claim-Level Verification** establishes the most practical compromise, providing granular proposition-level error attribution and a 2× to 4.5× latency speedup over sentence-level verification.
-
-For production multilingual factuality pipelines, future iterations should augment the hybrid pipeline with **multilingual dense passage retrieval** to eliminate lexical mismatch bottlenecks when summarization models emit cross-lingual scratchpads.
+The controlled benchmark provides exploratory pilot evidence regarding factuality-aware prompting and multi-granularity verification:
+- **Prompt Strategy Effect:** Factuality-aware prompting (Prompt B) reduced overall macro contradiction ratios in both fine-grained verification strategies (from 8.38% to 5.88% in sentence-level, and from 6.10% to 4.10% in hybrid claim-level). However, this effect varied across languages and verification architectures: the reductions were primarily driven by the Hindi subset (where sentence-level contradiction dropped from 10.22% to 5.50%, and hybrid contradiction fell from 10.67% to 2.86%), whereas English hybrid verification recorded a higher contradiction ratio under Prompt B (5.33% vs. 1.54%). Prompt B should not be characterized as universally improving factuality across all subgroups.
+- **Verification Strategy Trade-Offs:**
+  - **Whole-Document NLI** proved uninformative for diagnostic factuality filtering due to persistent neutral collapse (70%–90% neutral).
+  - **Sentence-Level NLI** exhibited the highest entailment sensitivity (60%–61%) and resilient cross-lingual semantic alignment, but at high computational cost on CPU (14.8–16.4 seconds per summary).
+  - **Hybrid Claim-Level Verification** enabled granular proposition-level evaluation and a 2× to 4.5× speedup over sentence-level verification, but exhibited sensitivity to passage retrieval failures when queries and documents differed lexically or linguistically.
+- **Future Directions:** To address the observed retrieval bottleneck when generation outputs contain cross-lingual planning text, future multilingual factuality frameworks should explore integrating multilingual dense retrieval or applying strict generation output constraints.
