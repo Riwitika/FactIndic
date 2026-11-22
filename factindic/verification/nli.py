@@ -13,11 +13,19 @@ Note on Factuality Assessment:
 import json
 import math
 import os
+import re
 import time
 import urllib.error
 import urllib.request
 from typing import Any, Dict, List, Optional, Sequence, Tuple, Union
 
+from factindic.cache import ResponseCache
+from factindic.exceptions import (
+    AuthenticationError,
+    InferenceTimeoutError,
+    QuotaExhaustedError,
+    RateLimitError,
+)
 from factindic.models.alternative import load_local_factindic_env
 from factindic.verification.config import NLIConfig
 from factindic.verification.result import NLILabel, NLIResult
@@ -62,13 +70,19 @@ class XNLIVerifier:
         - Resource-conscious: CPU-only execution and explicit unload_model() for memory release.
     """
 
-    def __init__(self, config: Optional[NLIConfig] = None) -> None:
+    def __init__(
+        self,
+        config: Optional[NLIConfig] = None,
+        cache: Optional[ResponseCache] = None,
+    ) -> None:
         """Initialize the XNLIVerifier with configuration.
 
         Args:
             config: Optional NLIConfig instance. Uses default CPU settings if omitted.
+            cache: Optional ResponseCache for persistent caching of verification calls.
         """
         self.config = config or NLIConfig()
+        self.cache = cache
         self._model: Optional[Any] = None
         self._tokenizer: Optional[Any] = None
         self._label_indices: Optional[Dict[str, int]] = None
@@ -353,20 +367,21 @@ class XNLIVerifier:
                 pred_label = max(prob_dict, key=prob_dict.get)  # type: ignore
 
                 premise_orig, hyp_orig = batch_pairs[idx]
-                results.append(
-                    NLIResult(
-                        premise=premise_orig,
-                        hypothesis=hyp_orig,
-                        language=canon_lang,
-                        predicted_label=pred_label,
-                        entailment_prob=prob_entail,
-                        neutral_prob=prob_neut,
-                        contradiction_prob=prob_contra,
-                        probabilities=prob_dict,
-                        model_id=self.config.model_id,
-                        latency_ms=round(per_item_latency_ms, 2),
-                    )
+                nli_res = NLIResult(
+                    premise=premise_orig,
+                    hypothesis=hyp_orig,
+                    language=canon_lang,
+                    predicted_label=pred_label,
+                    entailment_prob=prob_entail,
+                    neutral_prob=prob_neut,
+                    contradiction_prob=prob_contra,
+                    probabilities=prob_dict,
+                    model_id=self.config.model_id,
+                    latency_ms=round(per_item_latency_ms, 2),
                 )
+                if self.cache is not None:
+                    self.cache.set_nli(premise_orig, hyp_orig, canon_lang, self.config.model_id, nli_res.to_dict())
+                results.append(nli_res)
 
         return results
 
@@ -397,6 +412,13 @@ class XNLIVerifier:
         url = self.config.api_base_url or "https://api.cohere.com/v2/chat"
 
         for p, h in pairs:
+            # Check cache first
+            if self.cache is not None:
+                cached_dict = self.cache.get_nli(p, h, language, self.config.model_id)
+                if cached_dict is not None:
+                    results.append(NLIResult.from_dict(cached_dict))
+                    continue
+
             prompt = (
                 f"You are a rigorous Natural Language Inference (NLI) evaluator.\n"
                 f"Given a premise and a hypothesis in {language}, determine whether the hypothesis is:\n"
@@ -449,24 +471,55 @@ class XNLIVerifier:
                 except Exception as exc:
                     last_exc = exc
                     err_msg = str(exc).lower()
+                    status_code = getattr(exc, "code", None)
+                    resp_body = ""
                     if isinstance(exc, urllib.error.HTTPError):
                         try:
-                            body = exc.read().decode("utf-8", errors="replace")
-                            err_msg += " " + body.lower()
+                            resp_body = exc.read().decode("utf-8", errors="replace")
+                            err_msg += " " + resp_body.lower()
                         except Exception:
                             pass
-                    if "1000 api calls / month" in err_msg or ("trial key" in err_msg and "429" in err_msg):
-                        raise RuntimeError(
-                            f"Cohere trial key monthly quota of 1000 API calls exceeded: {exc}"
+
+                    # 1. Monthly quota exhausted: fail fast immediately
+                    if (
+                        "1000 api calls / month" in err_msg
+                        or ("trial key" in err_msg and "429" in err_msg)
+                        or "monthly quota" in err_msg
+                    ):
+                        raise QuotaExhaustedError(
+                            f"Cohere trial key monthly quota of 1000 API calls exceeded: {exc}",
+                            response_body=resp_body,
                         ) from exc
 
+                    # 2. Authentication error: fail fast immediately
+                    if status_code in (401, 403) or "unauthorized" in err_msg or "invalid api key" in err_msg:
+                        raise AuthenticationError(
+                            f"Hosted NLI authentication failed: {exc}",
+                            status_code=status_code,
+                            response_body=resp_body,
+                        ) from exc
+
+                    # 3. Timeout error
+                    if isinstance(exc, (TimeoutError, urllib.error.URLError)) and "timed out" in err_msg:
+                        if attempt == self.config.max_retries - 1:
+                            raise InferenceTimeoutError(
+                                f"Hosted NLI inference timed out after {self.config.timeout}s: {exc}"
+                            ) from exc
+
+                    # 4. Burst rate limit (429) - retry with backoff or Retry-After
                     wait_time = 2.0 * (attempt + 1)
-                    if isinstance(exc, urllib.error.HTTPError):
-                        if exc.code == 429:
-                            retry_after = exc.headers.get("Retry-After")
-                            wait_time = float(retry_after) if retry_after else max(15.0, 10.0 * (attempt + 1))
+                    if status_code == 429:
+                        if attempt == self.config.max_retries - 1:
+                            raise RateLimitError(
+                                f"Hosted NLI rate limit exceeded after {self.config.max_retries} retries: {exc}",
+                                status_code=429,
+                                response_body=resp_body,
+                            ) from exc
+                        retry_after = exc.headers.get("Retry-After") if hasattr(exc, "headers") else None
+                        wait_time = float(retry_after) if retry_after else max(15.0, 10.0 * (attempt + 1))
                     elif "429" in str(exc) or "too many requests" in str(exc).lower():
                         wait_time = max(15.0, 10.0 * (attempt + 1))
+
                     time.sleep(wait_time)
 
             if out_data is None:
@@ -499,20 +552,24 @@ class XNLIVerifier:
             if raw_label not in [l.value for l in NLILabel]:
                 raw_label = max(prob_dict, key=prob_dict.get)  # type: ignore
 
-            results.append(
-                NLIResult(
-                    premise=p,
-                    hypothesis=h,
-                    language=language,
-                    predicted_label=raw_label,
-                    entailment_prob=round(entail_prob, 4),
-                    neutral_prob=round(neut_prob, 4),
-                    contradiction_prob=round(contra_prob, 4),
-                    probabilities={k: round(v, 4) for k, v in prob_dict.items()},
-                    model_id=self.config.model_id,
-                    latency_ms=round(latency_ms, 2),
-                )
+            nli_res = NLIResult(
+                premise=p,
+                hypothesis=h,
+                language=language,
+                predicted_label=raw_label,
+                entailment_prob=round(entail_prob, 4),
+                neutral_prob=round(neut_prob, 4),
+                contradiction_prob=round(contra_prob, 4),
+                probabilities={k: round(v, 4) for k, v in prob_dict.items()},
+                model_id=self.config.model_id,
+                latency_ms=round(latency_ms, 2),
             )
+
+            # Store in cache
+            if self.cache is not None:
+                self.cache.set_nli(p, h, language, self.config.model_id, nli_res.to_dict())
+
+            results.append(nli_res)
 
             if len(pairs) > 1:
                 time.sleep(0.3)

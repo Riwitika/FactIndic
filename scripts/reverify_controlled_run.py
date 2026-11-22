@@ -21,6 +21,8 @@ ROOT_DIR = Path(__file__).resolve().parent.parent
 if str(ROOT_DIR) not in sys.path:
     sys.path.insert(0, str(ROOT_DIR))
 
+from factindic.cache import ResponseCache
+from factindic.exceptions import QuotaExhaustedError
 from factindic.experiment_runner import (
     ConditionID,
     CONDITION_SPECS as CONDITION_DEFINITIONS,
@@ -49,8 +51,10 @@ def reverify_controlled_experiment(
     en_benchmark_path: Union[str, Path] = "data/benchmark/controlled_sample_en.jsonl",
     hi_benchmark_path: Union[str, Path] = "data/benchmark/controlled_sample_hi.jsonl",
     output_dir: Union[str, Path] = "data/benchmark_results/controlled_run/reverified",
+    cache_db_path: Optional[Union[str, Path]] = "data/cache/response_cache.db",
     delay_seconds: float = 3.0,
     resume: bool = True,
+    dry_run: bool = False,
     nli_provider: str = "cohere",
     nli_model: str = "command-a-plus-05-2026",
 ) -> Dict[str, Any]:
@@ -130,14 +134,15 @@ def reverify_controlled_experiment(
     if len(preserved_generations) != 20:
         print(f"[!] Warning: Expected 20 preserved summaries, found {len(preserved_generations)}")
 
-    # 3. Initialize Verifiers
+    # 3. Initialize Response Cache and Verifiers
+    cache = ResponseCache(db_path=cache_db_path) if cache_db_path else None
     llm_client = CohereClient()
     from factindic.verification.config import NLIConfig
     nli_cfg = NLIConfig(provider=nli_provider, model_id=nli_model)
-    nli_verifier = XNLIVerifier(config=nli_cfg)
+    nli_verifier = XNLIVerifier(config=nli_cfg, cache=cache)
     whole_doc_verifier = WholeDocumentVerifier(verifier=nli_verifier)
     sentence_verifier = SentenceLevelVerifier(verifier=nli_verifier)
-    claim_extractor = AtomicClaimExtractor(client=llm_client, delay_seconds=delay_seconds)
+    claim_extractor = AtomicClaimExtractor(client=llm_client, cache=cache, delay_seconds=delay_seconds)
     evidence_retriever = BM25EvidenceRetriever()
     hybrid_verifier = HybridClaimVerifier(verifier=nli_verifier, retriever=evidence_retriever)
 
@@ -149,6 +154,33 @@ def reverify_controlled_experiment(
             if r.status == "SUCCESS":
                 completed_keys[(r.source_record_id, r.condition_id)] = r
         print(f"[*] Resuming from existing results: {len(completed_keys)} conditions already SUCCESS.")
+
+    ordered_source_records = en_records + hi_records
+
+    if dry_run:
+        remaining_count = max(0, (len(ordered_source_records) * 6) - len(completed_keys))
+        print("\n" + "=" * 65)
+        print("          CONTROLLED RE-VERIFICATION DRY-RUN REPORT")
+        print("=" * 65)
+        print(f"Total Source Records:    {len(ordered_source_records)} (5 EN, 5 HI)")
+        print(f"Preserved Summaries:     {len(preserved_generations)} (10 Prompt A, 10 Prompt B)")
+        print(f"Total Evaluations:       60 (6 conditions x 10 records)")
+        print(f"Already Evaluated (SUCCESS): {len(completed_keys)}")
+        print(f"Remaining Evaluations:  {remaining_count}")
+        print(f"Estimated API Calls:     ~440 calls")
+        print(f"Response Cache DB:       {cache_db_path}")
+        if cache:
+            c_stats = cache.get_stats()
+            print(f"Cache Status:            {c_stats.total_entries} entries (Hits: {c_stats.hits}, Misses: {c_stats.misses})")
+        print("=" * 65)
+        print("[✓] Dry-run complete. Zero live API calls executed.\n")
+        return {
+            "dry_run": True,
+            "total_records": len(ordered_source_records),
+            "completed_conditions": len(completed_keys),
+            "remaining_conditions": remaining_count,
+            "estimated_calls": 440,
+        }
 
     all_conditions = [
         ConditionID.C1,
@@ -162,9 +194,9 @@ def reverify_controlled_experiment(
     t_start = time.time()
     start_time_utc = datetime.now(timezone.utc).isoformat()
     reverified_results: List[ExperimentRecord] = []
+    quota_exhausted = False
 
     # Iterate through the 10 source records
-    ordered_source_records = en_records + hi_records
     for art_idx, article in enumerate(ordered_source_records, 1):
         art_id = _get_article_id(article)
 
@@ -184,6 +216,31 @@ def reverify_controlled_experiment(
                 raise RuntimeError(f"Missing preserved summary for {art_id} under {strat_key}")
 
             gen_rec = preserved_generations[gen_key]
+
+            if quota_exhausted:
+                # Mark as QUOTA_BLOCKED without fabricating scores or failing blindly
+                exp_rec = ExperimentRecord(
+                    condition_id=cond_id.value,
+                    source_record_id=art_id,
+                    language=article.language,
+                    prompt_strategy=strat_key,
+                    prompt_template_version=gen_rec.prompt_template_version,
+                    verification_strategy=verif_strat,
+                    model_id=gen_rec.model_id,
+                    provider=gen_rec.provider,
+                    generation_parameters=dict(gen_rec.generation_parameters),
+                    generated_summary=gen_rec.generated_summary,
+                    generation_latency_seconds=gen_rec.latency_seconds,
+                    verification_latency_ms=0.0,
+                    verification_results=[],
+                    status="QUOTA_BLOCKED",
+                    error_message="Skipped: Cohere trial key monthly quota (1000 API calls) exhausted.",
+                    timestamp_utc=datetime.now(timezone.utc).isoformat(),
+                    source_dataset=gen_rec.source_dataset,
+                )
+                reverified_results.append(exp_rec)
+                save_experiment_records(reverified_results, out_results_file, append=False)
+                continue
 
             print(f"[{art_idx}/{len(ordered_source_records)}] Re-verifying {cond_id.value} for {art_id} ({article.language})...", flush=True)
 
@@ -220,9 +277,22 @@ def reverify_controlled_experiment(
                 else:
                     raise ValueError(f"Unknown verification strategy: {verif_strat}")
 
+            except QuotaExhaustedError as q_exc:
+                quota_exhausted = True
+                status = "QUOTA_BLOCKED"
+                error_msg = f"QUOTA_EXHAUSTED: {q_exc}"
+                print(f"    [!] Monthly API Quota Exhausted: {q_exc}. Halting calls.", flush=True)
+
             except Exception as exc:
-                status = "FAILED"
-                error_msg = f"Verification execution error: {type(exc).__name__}: {str(exc)}"
+                err_str = str(exc).lower()
+                if "1000 api calls / month" in err_str or ("trial key" in err_str and "429" in err_str):
+                    quota_exhausted = True
+                    status = "QUOTA_BLOCKED"
+                    error_msg = f"QUOTA_EXHAUSTED: {exc}"
+                    print(f"    [!] Monthly API Quota Exhausted: {exc}. Halting calls.", flush=True)
+                else:
+                    status = "FAILED"
+                    error_msg = f"Verification execution error: {type(exc).__name__}: {str(exc)}"
 
             verif_latency_ms = round((time.time() - t_verif_start) * 1000, 2)
 
@@ -281,6 +351,7 @@ def reverify_controlled_experiment(
     except ImportError:
         trans_ver = "unavailable"
 
+    quota_blocked_count = sum(1 for r in reverified_results if r.status == "QUOTA_BLOCKED")
     audit_report = {
         "timestamp_utc": start_time_utc,
         "completed_timestamp_utc": datetime.now(timezone.utc).isoformat(),
@@ -305,8 +376,10 @@ def reverify_controlled_experiment(
             "condition_breakdown": condition_counts,
             "success_breakdown": success_counts,
             "failed_breakdown": failed_counts,
+            "quota_blocked_count": quota_blocked_count,
             "language_distribution": lang_counts,
         },
+        "cache_stats": cache.get_stats().to_dict() if cache else None,
         "output_files": {
             "results_jsonl": str(out_results_file.name),
             "audit_json": str(out_audit_file.name),
@@ -347,10 +420,20 @@ def main():
         help="Destination directory for reverified results and audit",
     )
     parser.add_argument(
+        "--cache-db",
+        default="data/cache/response_cache.db",
+        help="Path to SQLite persistent response cache DB (default: data/cache/response_cache.db)",
+    )
+    parser.add_argument(
         "--delay",
         type=float,
         default=3.0,
         help="Delay in seconds between claim extraction API calls",
+    )
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Calculate estimated API calls and audit state without executing API calls",
     )
     parser.add_argument(
         "--nli-provider",
@@ -380,8 +463,10 @@ def main():
             en_benchmark_path=args.en_benchmark,
             hi_benchmark_path=args.hi_benchmark,
             output_dir=args.output_dir,
+            cache_db_path=args.cache_db,
             delay_seconds=args.delay,
             resume=not args.no_resume,
+            dry_run=args.dry_run,
             nli_provider=args.nli_provider,
             nli_model=args.nli_model,
         )

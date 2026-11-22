@@ -54,7 +54,14 @@ data/generations/*demo*
 data/generations/generation_experiment_audit.json
 
 # Full-scale benchmark dataset files (preserve redistribution boundaries)
-data/benchmark/
+data/benchmark/*
+!data/benchmark/benchmark_manifest.json
 
 # Benchmark results (generated summaries and raw article text)
 data/benchmark_results/
+
+# Response cache databases
+data/cache/
+*.db
+*.db-wal
+*.db-shm

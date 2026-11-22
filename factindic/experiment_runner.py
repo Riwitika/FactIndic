@@ -22,6 +22,7 @@ Methodology & Experimental Controls:
 """
 
 import json
+import os
 import time
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
@@ -444,20 +445,31 @@ def save_experiment_records(
     file_path: Union[str, Path],
     append: bool = False,
 ) -> None:
-    """Save ExperimentRecord objects to a JSONL file.
+    """Save ExperimentRecord objects to a JSONL file with atomic writes when overwriting.
 
     Args:
         records: Sequence of ExperimentRecord objects.
         file_path: Destination JSONL file path.
-        append: If True, appends to file; otherwise overwrites.
+        append: If True, appends to file; otherwise performs atomic overwrite.
     """
     path = Path(file_path)
     path.parent.mkdir(parents=True, exist_ok=True)
 
-    mode = "a" if append else "w"
-    with open(path, mode, encoding="utf-8") as f:
-        for r in records:
-            f.write(json.dumps(r.to_dict(), ensure_ascii=False) + "\n")
+    if append:
+        with open(path, "a", encoding="utf-8") as f:
+            for r in records:
+                f.write(json.dumps(r.to_dict(), ensure_ascii=False) + "\n")
+    else:
+        temp_path = path.with_suffix(f".tmp.{os.getpid()}")
+        try:
+            with open(temp_path, "w", encoding="utf-8") as f:
+                for r in records:
+                    f.write(json.dumps(r.to_dict(), ensure_ascii=False) + "\n")
+            temp_path.replace(path)
+        except Exception:
+            if temp_path.exists():
+                temp_path.unlink()
+            raise
 
 
 def load_experiment_records(file_path: Union[str, Path]) -> List[ExperimentRecord]:

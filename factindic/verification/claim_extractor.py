@@ -20,6 +20,12 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence, Union
 
+from factindic.cache import ResponseCache
+from factindic.exceptions import (
+    AuthenticationError,
+    QuotaExhaustedError,
+    RateLimitError,
+)
 from factindic.generation import GenerationRecord
 from factindic.models.base import BaseLLMClient
 from factindic.verification.nli import SUPPORTED_VERIFICATION_LANGUAGES
@@ -236,6 +242,7 @@ class AtomicClaimExtractor:
     def __init__(
         self,
         client: Optional[BaseLLMClient] = None,
+        cache: Optional[ResponseCache] = None,
         temperature: float = 0.0,
         delay_seconds: float = 0.0,
     ) -> None:
@@ -243,10 +250,12 @@ class AtomicClaimExtractor:
 
         Args:
             client: Configured BaseLLMClient (e.g. CohereClient with Command A+).
+            cache: Optional ResponseCache for persistent caching of claim extraction.
             temperature: Sampling temperature for extraction (default: 0.0 for deterministic output).
             delay_seconds: Optional sleep interval in seconds after API calls.
         """
         self.client = client
+        self.cache = cache
         self.temperature = temperature
         self.delay_seconds = delay_seconds
 
@@ -344,6 +353,30 @@ class AtomicClaimExtractor:
                 )
             ]
 
+        # Check cache first
+        model_name = getattr(self.client, "model", "default") or "default"
+        if self.cache is not None:
+            cached_claims = self.cache.get_claims(sentence, lang_clean, model_name)
+            if cached_claims is not None:
+                results: List[ExtractedClaim] = []
+                for claim_idx, claim_str in enumerate(cached_claims):
+                    results.append(
+                        ExtractedClaim(
+                            record_id=record_id,
+                            language=lang_clean,
+                            original_sentence_index=sentence_index,
+                            original_sentence_text=sentence,
+                            claim_id=f"{claim_base_id}_c{claim_idx}",
+                            atomic_claim_text=claim_str,
+                            extraction_status="SUCCESS",
+                            error_message=None,
+                            extraction_timestamp_utc=timestamp_utc,
+                            prompt_strategy=prompt_strategy,
+                            source_dataset=source_dataset,
+                        )
+                    )
+                return results
+
         prompt = self.build_extraction_prompt(sentence=sentence, language=lang_clean)
 
         try:
@@ -366,6 +399,10 @@ class AtomicClaimExtractor:
             raw_output = gen_result.text
             parsed_claims = _parse_claims_json(raw_output)
 
+            # Store in cache
+            if self.cache is not None:
+                self.cache.set_claims(sentence, lang_clean, model_name, parsed_claims)
+
             results: List[ExtractedClaim] = []
             for claim_idx, claim_str in enumerate(parsed_claims):
                 results.append(
@@ -387,6 +424,12 @@ class AtomicClaimExtractor:
             return results
 
         except Exception as exc:
+            err_msg = str(exc).lower()
+            if isinstance(exc, QuotaExhaustedError) or "1000 api calls / month" in err_msg or ("trial key" in err_msg and "429" in err_msg):
+                raise QuotaExhaustedError(
+                    f"Cohere trial key monthly quota of 1000 API calls exceeded during claim extraction: {exc}"
+                ) from exc
+
             return [
                 ExtractedClaim(
                     record_id=record_id,

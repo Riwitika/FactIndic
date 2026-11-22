@@ -247,7 +247,33 @@ Features:
 
 ---
 
-## 8. Project Architecture
+## 8. Benchmark Execution & Quota-Aware Preflight
+
+FactIndic provides a quota-aware execution framework with persistent SQLite response caching (`factindic/cache.py`), cryptographic dataset manifests (`data/benchmark/benchmark_manifest.json`), and comprehensive preflight verification (`scripts/preflight_check.py`).
+
+### Key Capabilities
+1. **Cryptographic Integrity**: 200 benchmark records (100 English + 100 Hindi) fingerprinted with SHA-256 checksums (`bc8f5775...` and `6eb026f0...`) and verified for zero duplicate IDs.
+2. **Quota Management & Cost Modeling**: Accurately computes the 12,040 API calls (~10.0 hrs at 20 RPM) required for the full 200-record benchmark, and enforces fail-fast protection against trial key exhaustion.
+3. **Persistent Response Cache**: SQLite-backed cache (`data/cache/response_cache.db`) with WAL mode and SHA-256 keying across generation, NLI, and claim extraction.
+4. **Resumption & Honest Provenance**: Re-verification runner (`scripts/reverify_controlled_run.py`) preserves completed evaluations and records quota limits explicitly as `QUOTA_BLOCKED` without fabricating scores.
+
+### Preflight Verification Commands
+```bash
+# Run preflight verification on full 200-record benchmark
+python scripts/preflight_check.py
+
+# Run preflight on 10-record controlled sample
+python scripts/preflight_check.py --records 10
+
+# Run controlled re-verification dry-run (zero API calls)
+python scripts/reverify_controlled_run.py --dry-run
+```
+
+See [docs/BENCHMARK_EXECUTION.md](docs/BENCHMARK_EXECUTION.md) for the complete execution guide.
+
+---
+
+## 9. Project Architecture
 
 ```
 factindic/
@@ -302,14 +328,14 @@ factindic/
 
 ---
 
-## 9. Feasibility Analysis Summary
+## 10. Feasibility Analysis Summary
 
 - **MUTANT Feasibility:** The MUTANT dataset (`LingoIITGN/MUTANT`) was evaluated. It is a token-level corpus designed for language identification in multi-sentential code-mixed text. It contains **no summaries and no factuality annotations**. Incorporating it would require authoring manual summaries from scratch, introducing uncontrolled annotator variance. It is therefore excluded from the main pipeline.
 - **FRANK Benchmark:** The FRANK dataset (`artidoro/frank`) was analyzed. While its English annotations on CNN/DM and XSum cannot be directly transferred as ground truth for FactIndic, its **7-class error typology** (`PredE`, `EntE`, `CircE`, `CorefE`, `LinkE`, `OutE`, `OthE`) has been adapted to structure FactIndic's human evaluation protocol.
 
 ---
 
-## 10. Next Steps (Subsequent Phases)
+## 11. Next Steps (Subsequent Phases)
 Phase 2 implements the summary generation engine and smoke test. Subsequent phases will address:
 - **Phase 3:** Automated factuality verification implementation (Whole-Doc NLI, Claim-Level NLI, Hybrid).
 - **Phase 4:** Human evaluation, correlation analysis, and metrics dashboard.
