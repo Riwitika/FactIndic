@@ -27,6 +27,8 @@ class BaseLLMClient(ABC):
         temperature: float = 0.3,
         max_new_tokens: int = 256,
         top_p: float = 0.9,
+        response_format: Optional[Dict[str, Any]] = None,
+        **kwargs: Any,
     ) -> GenerationResult:
         """Generate text completion from a prompt.
 

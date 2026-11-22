@@ -9,6 +9,7 @@ Strict Policy:
 import json
 import os
 import time
+import urllib.error
 import urllib.request
 from typing import Any, Dict, Optional, Tuple
 
@@ -124,15 +125,19 @@ class AyaExpanseClient(BaseLLMClient):
         temperature: float,
         max_new_tokens: int,
         top_p: float,
+        response_format: Optional[Dict[str, Any]] = None,
     ) -> str:
-        payload = {
+        payload: Dict[str, Any] = {
             "model": self.model_id,
             "messages": [{"role": "user", "content": prompt}],
             "temperature": temperature,
             "max_tokens": max_new_tokens,
             "p": top_p,
-            "thinking": {"type": "disabled"},
         }
+        if response_format:
+            payload["response_format"] = response_format
+        else:
+            payload["thinking"] = {"type": "disabled"}
         data = json.dumps(payload).encode("utf-8")
         req = urllib.request.Request(
             self.base_url,
@@ -143,21 +148,35 @@ class AyaExpanseClient(BaseLLMClient):
                 "User-Agent": "FactIndic-Research/1.0",
             },
         )
-        with urllib.request.urlopen(req, timeout=self.timeout) as resp:
-            res_data = json.loads(resp.read().decode("utf-8"))
-            # Cohere V2 format: content array may contain thinking and text blocks
-            content = res_data.get("message", {}).get("content", [])
-            if content and isinstance(content, list):
-                text_parts = [
-                    item["text"]
-                    for item in content
-                    if isinstance(item, dict) and "text" in item and item.get("type") != "thinking"
-                ]
-                if text_parts:
-                    return "\n".join(text_parts).strip()
-                if "text" in content[0]:
-                    return content[0]["text"].strip()
-            raise ValueError(f"Unexpected Cohere response structure: {res_data}")
+        max_retries = 5
+        backoff = 3.0
+        for attempt in range(max_retries):
+            try:
+                with urllib.request.urlopen(req, timeout=self.timeout) as resp:
+                    res_data = json.loads(resp.read().decode("utf-8"))
+                    # Cohere V2 format: content array may contain thinking and text blocks
+                    content = res_data.get("message", {}).get("content", [])
+                    if content and isinstance(content, list):
+                        text_parts = [
+                            item["text"]
+                            for item in content
+                            if isinstance(item, dict) and "text" in item and item.get("type") != "thinking"
+                        ]
+                        if text_parts:
+                            return "\n".join(text_parts).strip()
+                        if "text" in content[0]:
+                            return content[0]["text"].strip()
+                    raise ValueError(f"Unexpected Cohere response structure: {res_data}")
+            except urllib.error.HTTPError as http_err:
+                if http_err.code in (429, 500, 502, 503, 504) and attempt < max_retries - 1:
+                    retry_after = http_err.headers.get("Retry-After")
+                    try:
+                        sleep_dur = float(retry_after) if retry_after else (backoff * (2 ** attempt))
+                    except (ValueError, TypeError):
+                        sleep_dur = backoff * (2 ** attempt)
+                    time.sleep(sleep_dur)
+                    continue
+                raise
 
     def _call_huggingface(
         self,
@@ -228,6 +247,8 @@ class AyaExpanseClient(BaseLLMClient):
         temperature: float = 0.3,
         max_new_tokens: int = 256,
         top_p: float = 0.9,
+        response_format: Optional[Dict[str, Any]] = None,
+        **kwargs: Any,
     ) -> GenerationResult:
         """Execute text generation with the configured hosted provider."""
         t0 = time.time()
@@ -236,9 +257,17 @@ class AyaExpanseClient(BaseLLMClient):
             "max_new_tokens": max_new_tokens,
             "top_p": top_p,
         }
+        if response_format:
+            params["response_format"] = response_format
 
         if self.provider == "cohere":
-            text = self._call_cohere(prompt, temperature, max_new_tokens, top_p)
+            text = self._call_cohere(
+                prompt,
+                temperature,
+                max_new_tokens,
+                top_p,
+                response_format=response_format,
+            )
         elif self.provider == "huggingface":
             text = self._call_huggingface(prompt, temperature, max_new_tokens, top_p)
         elif self.provider == "openai_compatible":

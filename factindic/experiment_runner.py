@@ -214,7 +214,10 @@ class UnifiedExperimentRunner:
         self.nli_verifier = nli_verifier or XNLIVerifier()
         self.whole_doc_verifier = whole_doc_verifier or WholeDocumentVerifier(verifier=self.nli_verifier)
         self.sentence_verifier = sentence_verifier or SentenceLevelVerifier(verifier=self.nli_verifier)
-        self.claim_extractor = claim_extractor or AtomicClaimExtractor(client=self.llm_client)
+        self.claim_extractor = claim_extractor or AtomicClaimExtractor(
+            client=self.llm_client,
+            delay_seconds=delay_seconds,
+        )
         self.evidence_retriever = evidence_retriever or BM25EvidenceRetriever()
         self.hybrid_verifier = hybrid_verifier or HybridClaimVerifier(
             verifier=self.nli_verifier,
@@ -406,7 +409,7 @@ class UnifiedExperimentRunner:
 
         results: List[ExperimentRecord] = []
 
-        for article in records:
+        for art_idx, article in enumerate(records, 1):
             art_id = _get_article_id(article)
             for cond_id in all_conditions:
                 key = (art_id, cond_id.value)
@@ -414,10 +417,18 @@ class UnifiedExperimentRunner:
                     results.append(completed_records[key])
                     continue
 
+                print(
+                    f"[{art_idx}/{len(records)}] Evaluating {cond_id.value} for {art_id} ({article.language})...",
+                    flush=True,
+                )
                 exp_rec = self.run_record_condition(
                     article=article,
                     condition_id=cond_id,
                     generation_cache=generation_cache,
+                )
+                print(
+                    f"    -> Status: {exp_rec.status} (verif_latency: {exp_rec.verification_latency_ms}ms)",
+                    flush=True,
                 )
                 results.append(exp_rec)
 

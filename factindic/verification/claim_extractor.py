@@ -109,52 +109,118 @@ class ExtractedClaim:
         )
 
 
+CLAIMS_JSON_SCHEMA: Dict[str, Any] = {
+    "type": "object",
+    "properties": {
+        "claims": {
+            "type": "array",
+            "items": {"type": "string"},
+            "description": "List of independently verifiable atomic factual claims.",
+        }
+    },
+    "required": ["claims"],
+}
+
+REASONING_PREFIXES = (
+    "we need to",
+    "the user asks",
+    "let's craft",
+    "potential claims:",
+    "sentence:",
+    "note:",
+    "draft:",
+    "refinement:",
+    "final output:",
+    "step 1",
+    "step 2",
+    "according to",
+)
+
+
 def _parse_claims_json(raw_text: str) -> List[str]:
-    """Parse JSON list of claims from raw model output, handling markdown code fences.
+    """Parse JSON list of claims from raw model output, handling markdown code fences,
+    conversational preambles, and structured object formats.
 
     Raises:
-        ValueError: If JSON array cannot be extracted or parsed.
+        ValueError: If JSON array cannot be extracted or parsed, or contains no valid claims.
     """
     cleaned = raw_text.strip()
+    if not cleaned:
+        raise ValueError("Raw model output is empty or whitespace.")
 
-    # Strip markdown code blocks like ```json ... ``` or ``` ... ```
+    # 1. Check for markdown code fences
     fence_pattern = r"```(?:json)?\s*([\s\S]*?)\s*```"
+    candidate_texts: List[str] = []
     match = re.search(fence_pattern, cleaned)
     if match:
-        cleaned = match.group(1).strip()
+        candidate_texts.append(match.group(1).strip())
+    candidate_texts.append(cleaned)
 
-    # Search for first [ and last ] to isolate JSON array
-    start_idx = cleaned.find("[")
-    end_idx = cleaned.rfind("]")
+    parsed_obj: Optional[Any] = None
+    for cand in candidate_texts:
+        # Direct parsing
+        try:
+            parsed_obj = json.loads(cand)
+            break
+        except json.JSONDecodeError:
+            pass
 
-    if start_idx == -1 or end_idx == -1 or end_idx < start_idx:
-        if cleaned.startswith("{") and cleaned.endswith("}"):
+        # Try isolating innermost/outermost {...}
+        brace_start = cand.find("{")
+        brace_end = cand.rfind("}")
+        if brace_start != -1 and brace_end > brace_start:
             try:
-                obj = json.loads(cleaned)
-                if isinstance(obj, dict):
-                    if "claims" in obj and isinstance(obj["claims"], list):
-                        return [str(c).strip() for c in obj["claims"] if str(c).strip()]
-                    raise ValueError(f"Expected JSON list of strings, but got: {type(obj).__name__}")
+                parsed_obj = json.loads(cand[brace_start : brace_end + 1])
+                break
             except json.JSONDecodeError:
                 pass
+
+        # Try isolating innermost/outermost [...]
+        bracket_start = cand.find("[")
+        bracket_end = cand.rfind("]")
+        if bracket_start != -1 and bracket_end > bracket_start:
+            try:
+                parsed_obj = json.loads(cand[bracket_start : bracket_end + 1])
+                break
+            except json.JSONDecodeError:
+                pass
+
+    if parsed_obj is None:
         raise ValueError(f"No valid JSON array found in output: {raw_text[:120]}")
 
-    json_str = cleaned[start_idx : end_idx + 1]
-    parsed = json.loads(json_str)
-
-    if not isinstance(parsed, list):
-        raise ValueError(f"Expected JSON list of strings, but got: {type(parsed).__name__}")
+    raw_items: List[Any] = []
+    if isinstance(parsed_obj, dict):
+        if "claims" in parsed_obj and isinstance(parsed_obj["claims"], list):
+            raw_items = parsed_obj["claims"]
+        else:
+            raise ValueError(f"Expected JSON list of strings, but got object keys: {list(parsed_obj.keys())}")
+    elif isinstance(parsed_obj, list):
+        raw_items = parsed_obj
+    else:
+        raise ValueError(f"Expected JSON list or object with 'claims', got: {type(parsed_obj).__name__}")
 
     claims: List[str] = []
-    for item in parsed:
-        if isinstance(item, str) and item.strip():
-            claims.append(item.strip())
+    for item in raw_items:
+        claim_str = ""
+        if isinstance(item, str):
+            claim_str = item.strip()
         elif isinstance(item, dict) and "claim" in item:
-            # Fallback for structured dict format e.g. [{"claim": "..."}]
-            claims.append(str(item["claim"]).strip())
+            claim_str = str(item["claim"]).strip()
+        elif isinstance(item, dict) and "text" in item:
+            claim_str = str(item["text"]).strip()
+
+        if not claim_str:
+            continue
+
+        # Filter out internal reasoning / meta-commentary
+        lower_claim = claim_str.lower()
+        if any(lower_claim.startswith(prefix) for prefix in REASONING_PREFIXES):
+            continue
+
+        claims.append(claim_str)
 
     if not claims:
-        raise ValueError("Parsed JSON list contains no non-empty claim strings.")
+        raise ValueError("Parsed JSON contains zero non-empty, non-reasoning claim strings.")
 
     return claims
 
@@ -170,15 +236,18 @@ class AtomicClaimExtractor:
         self,
         client: Optional[BaseLLMClient] = None,
         temperature: float = 0.0,
+        delay_seconds: float = 0.0,
     ) -> None:
         """Initialize AtomicClaimExtractor.
 
         Args:
             client: Configured BaseLLMClient (e.g. CohereClient with Command A+).
             temperature: Sampling temperature for extraction (default: 0.0 for deterministic output).
+            delay_seconds: Optional sleep interval in seconds after API calls.
         """
         self.client = client
         self.temperature = temperature
+        self.delay_seconds = delay_seconds
 
     def build_extraction_prompt(self, sentence: str, language: str) -> str:
         """Build the language-appropriate extraction prompt.
@@ -277,11 +346,21 @@ class AtomicClaimExtractor:
         prompt = self.build_extraction_prompt(sentence=sentence, language=lang_clean)
 
         try:
-            gen_result = self.client.generate(
-                prompt=prompt,
-                temperature=self.temperature,
-                max_new_tokens=256,
-            )
+            import inspect
+            gen_kwargs: Dict[str, Any] = {
+                "prompt": prompt,
+                "temperature": self.temperature,
+                "max_new_tokens": 1024,
+            }
+            sig = inspect.signature(self.client.generate)
+            if "response_format" in sig.parameters or any(
+                p.kind == inspect.Parameter.VAR_KEYWORD for p in sig.parameters.values()
+            ):
+                gen_kwargs["response_format"] = {"type": "json_object", "schema": CLAIMS_JSON_SCHEMA}
+
+            gen_result = self.client.generate(**gen_kwargs)
+            if self.delay_seconds > 0:
+                time.sleep(self.delay_seconds)
 
             raw_output = gen_result.text
             parsed_claims = _parse_claims_json(raw_output)
