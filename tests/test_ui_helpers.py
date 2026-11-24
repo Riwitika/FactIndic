@@ -214,3 +214,76 @@ def test_controlled_experiment_data_loaders():
     assert "hi_scratchpad" in case_ids
 
 
+def test_benchmark_articles_and_evaluations_mapping():
+    """Verify loading of all 10 benchmark articles and their exact 1:6 evaluation mappings."""
+    from factindic.ui_helpers import (
+        get_article_evaluations,
+        load_benchmark_articles,
+        load_controlled_experiment_results,
+    )
+
+    articles = load_benchmark_articles()
+    assert len(articles) == 10, f"Expected 10 articles, got {len(articles)}"
+
+    en_arts = [a for a in articles if a["language"] == "en"]
+    hi_arts = [a for a in articles if a["language"] == "hi"]
+    assert len(en_arts) == 5, f"Expected 5 English articles, got {len(en_arts)}"
+    assert len(hi_arts) == 5, f"Expected 5 Hindi articles, got {len(hi_arts)}"
+
+    for a in articles:
+        assert a["article_id"], "article_id must be non-empty"
+        assert len(a["source_text"]) > 50, "source_text must be non-empty"
+        assert a["title"], "title must be non-empty"
+
+    # Verify evaluation mapping for each of the 10 articles
+    results = load_controlled_experiment_results()
+    assert len(results) == 60
+
+    for a in articles:
+        mapping = get_article_evaluations(a["article_id"], results)
+        assert "prompt_a" in mapping and "prompt_b" in mapping
+        pa = mapping["prompt_a"]
+        pb = mapping["prompt_b"]
+
+        assert set(pa.keys()) == {"whole_document", "sentence_level", "hybrid_claim_level"}
+        assert set(pb.keys()) == {"whole_document", "sentence_level", "hybrid_claim_level"}
+
+        # Verify summary consistency across strategies for each prompt
+        pa_summary = pa["whole_document"]["generated_summary"]
+        assert pa["sentence_level"]["generated_summary"] == pa_summary
+        assert pa["hybrid_claim_level"]["generated_summary"] == pa_summary
+
+        pb_summary = pb["whole_document"]["generated_summary"]
+        assert pb["sentence_level"]["generated_summary"] == pb_summary
+        assert pb["hybrid_claim_level"]["generated_summary"] == pb_summary
+
+
+def test_faculty_dashboard_app_render():
+    """Verify that the redesigned faculty-facing Streamlit app renders both pages without error."""
+    from streamlit.testing.v1 import AppTest
+
+    # Test Article Demonstration page (default)
+    at1 = AppTest.from_file("app.py", default_timeout=30)
+    at1.run()
+    assert not at1.exception, f"Exception on Article Demonstration default: {at1.exception}"
+
+    # Test Prompt B selection
+    prompt_radio = at1.radio(key="prompt_choice_radio")
+    prompt_radio.set_value("Prompt B (Factuality-Aware)").run()
+    assert not at1.exception, f"Exception on selecting Prompt B: {at1.exception}"
+
+    # Test Hindi filter selection
+    lang_filter = at1.selectbox(key="lang_filter")
+    lang_filter.set_value("Hindi (5)").run()
+    assert not at1.exception, f"Exception on Hindi filter: {at1.exception}"
+
+    # Test Research Results page
+    at2 = AppTest.from_file("app.py", default_timeout=30)
+    at2.run()
+    nav = at2.sidebar.radio(key="nav_section")
+    nav.set_value("Research Results").run()
+    assert not at2.exception, f"Exception on Research Results page: {at2.exception}"
+
+
+
+

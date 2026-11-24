@@ -374,3 +374,65 @@ def get_qualitative_case_studies() -> List[Dict[str, Any]]:
         },
     ]
 
+
+def load_benchmark_articles() -> List[Dict[str, Any]]:
+    """Load the 10 frozen source benchmark articles (5 English, 5 Hindi).
+
+    Returns:
+        List of 10 dicts containing article metadata, original source text,
+        and reference summary.
+    """
+    en_path = DATA_DIR / "benchmark" / "controlled_sample_en.jsonl"
+    hi_path = DATA_DIR / "benchmark" / "controlled_sample_hi.jsonl"
+    articles: List[Dict[str, Any]] = []
+    for p in [en_path, hi_path]:
+        if not p.is_file():
+            continue
+        try:
+            with open(p, "r", encoding="utf-8") as f:
+                for line in f:
+                    line = line.strip()
+                    if line:
+                        r = json.loads(line)
+                        raw_id = r.get("metadata", {}).get("raw_id", r.get("example_id", ""))
+                        articles.append({
+                            "article_id": raw_id,
+                            "example_id": r.get("example_id", ""),
+                            "language": r.get("language", "en"),
+                            "language_display": "English" if r.get("language") == "en" else "Hindi",
+                            "title": r.get("metadata", {}).get("title", "Untitled Article"),
+                            "source_text": r.get("source_text", ""),
+                            "reference_summary": r.get("reference_summary", ""),
+                            "url": r.get("metadata", {}).get("url", ""),
+                        })
+        except Exception:
+            pass
+    return articles
+
+
+def get_article_evaluations(
+    article_id: str,
+    results: Optional[List[Dict[str, Any]]] = None,
+) -> Dict[str, Dict[str, Any]]:
+    """Retrieve and map the 6 evaluations for a specific benchmark article.
+
+    Args:
+        article_id: Identifier of the source article (e.g. 'uk-wales-33738390').
+        results: Optional pre-loaded list of 60 evaluation records.
+
+    Returns:
+        Dict mapping prompt ('prompt_a', 'prompt_b') to strategy
+        ('whole_document', 'sentence_level', 'hybrid_claim_level') -> evaluation record.
+    """
+    if results is None:
+        results = load_controlled_experiment_results()
+    recs = [r for r in results if r.get("source_record_id") == article_id]
+    by_prompt: Dict[str, Dict[str, Any]] = {"prompt_a": {}, "prompt_b": {}}
+    for r in recs:
+        p = r.get("prompt_strategy")
+        s = r.get("verification_strategy")
+        if p in by_prompt and s:
+            by_prompt[p][s] = r
+    return by_prompt
+
+
