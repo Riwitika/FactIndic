@@ -157,8 +157,8 @@ articles, summary_table, all_results = get_cached_dashboard_data()
 # -----------------------------------------------------------------------------
 
 with st.sidebar:
-    st.markdown("### FactIndic Research")
-    st.caption("Factuality-Aware Summarization Benchmark")
+    st.markdown("### FactIndic")
+    st.caption("Factuality-Aware Summarization")
     st.markdown("---")
 
     selected_page = st.radio(
@@ -166,21 +166,7 @@ with st.sidebar:
         options=["Article Demonstration", "Research Results"],
         index=0,
         key="nav_section",
-        help="Select between interactive article-by-article inspection and macro experimental findings.",
     )
-
-    st.markdown("---")
-    st.markdown(
-        """
-        **Benchmark Scope:**
-        - **10** Source Articles (5 EN, 5 HI)
-        - **20** Frozen Summaries
-        - **3** Verification Strategies
-        - **60** Total Evaluations
-        - **Local CPU** Verification
-        """
-    )
-    st.caption("Bennett University • NLP Research")
 
 
 # -----------------------------------------------------------------------------
@@ -377,17 +363,13 @@ if selected_page == "Article Demonstration":
     # Tab 1: Hybrid Claim-by-Claim & BM25 Evidence Inspection
     with inspect_tabs[0]:
         st.markdown("#### Atomic Factual Claims & Retrieved Passages")
-        st.markdown(
-            r"""
-            <div class="info-callout">
-                <strong>Hybrid Decision Policy:</strong> Each atomic claim is evaluated against its top-3 retrieved BM25 passages.
-                A claim is marked <strong>Entailment</strong> if \(\max_k P(\text{entailment}) \ge 0.50\);
-                otherwise <strong>Contradiction</strong> if \(\max_k P(\text{contradiction}) \ge 0.50\); otherwise <strong>Neutral</strong>.
-                <em>Scores from different passages are evaluated independently and never combined into a single probability distribution.</em>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
+        with st.expander("ℹ️ How Hybrid Claim-Level Verification Works", expanded=False):
+            st.markdown(
+                r"""
+                - **Decision Policy:** Each atomic claim is evaluated against its top-3 retrieved BM25 passages. A claim is marked **Entailment** if $\max_k P(\text{entailment}) \ge 0.50$; otherwise **Contradiction** if $\max_k P(\text{contradiction}) \ge 0.50$; otherwise **Neutral**.
+                - **Score Independence:** Probabilities from different passages are evaluated independently and never combined into a single distribution.
+                """
+            )
 
         if s3_rec:
             detail3 = get_hybrid_claim_explorer_detail(s3_rec)
@@ -520,17 +502,12 @@ if selected_page == "Article Demonstration":
                     unsafe_allow_html=True,
                 )
             with col_w2:
-                st.markdown(
-                    """
-                    <div class="info-callout" style="margin-top: 0.5rem;">
-                        <strong>Research Observation (Length Bias & Neutral Collapse):</strong><br>
-                        In whole-document verification, mDeBERTa cross-attends across the entire multi-thousand-token article
-                        and the summary paragraph. Because the article contains substantial background context not mentioned in the summary,
-                        the model defaults to <code>NEUTRAL</code> in 80% of benchmark cases (90% in Prompt A, 70% in Prompt B).
-                    </div>
-                    """,
-                    unsafe_allow_html=True,
-                )
+                with st.expander("ℹ️ Whole-Document Observation (Neutral Collapse)", expanded=False):
+                    st.markdown(
+                        "In whole-document verification, cross-attention over multi-thousand-token articles leads the model "
+                        "to default to **Neutral** in 80% of benchmark cases (90% in Prompt A, 70% in Prompt B) "
+                        "due to background context not covered in the summary."
+                    )
         else:
             st.info("Whole-document record not available.")
 
@@ -543,71 +520,124 @@ elif selected_page == "Research Results":
     st.markdown('<div class="faculty-header">', unsafe_allow_html=True)
     st.title("Research Results: Controlled Benchmark Evaluation")
     st.markdown(
-        "**FactIndic: Factuality-Aware Summarization for Indic and Code-Mixed Languages**<br>"
         "Evaluating prompt-based hallucination suppression and verification granularity across English and Hindi summaries.",
-        unsafe_allow_html=True,
     )
     st.markdown("</div>", unsafe_allow_html=True)
 
-    # High-Level Metric Strip
-    m_col1, m_col2, m_col3, m_col4 = st.columns(4)
-    with m_col1:
+    # -------------------------------------------------------------------------
+    # Key Research Finding — Best Observed Combination
+    # -------------------------------------------------------------------------
+    st.markdown("### Key Research Finding — Best Observed Combination")
+
+    col_c4, col_c6 = st.columns(2)
+
+    with col_c4:
         st.markdown(
             """
-            <div class="kpi-card">
-                <div class="kpi-value">10 Articles</div>
-                <div class="kpi-label">5 English • 5 Hindi</div>
+            <div style="border: 2px solid #2563eb; border-radius: 8px; padding: 1.15rem; background-color: #f8fafc; height: 100%;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
+                    <span style="font-size: 1.15rem; font-weight: 700; color: #1e3a8a;">C4: Prompt B + Sentence-Level NLI</span>
+                    <span style="background-color: #dbeafe; color: #1e40af; font-size: 0.75rem; font-weight: 700; padding: 0.2rem 0.55rem; border-radius: 4px;">BEST BALANCE</span>
+                </div>
+                <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 0.5rem; margin: 0.75rem 0;">
+                    <div style="background: #ffffff; padding: 0.5rem 0.75rem; border-radius: 6px; border: 1px solid #e2e8f0;">
+                        <span style="font-size: 0.75rem; color: #64748b; font-weight: 600; text-transform: uppercase;">Macro Entailment Ratio</span>
+                        <div style="font-size: 1.25rem; font-weight: 700; color: #166534;">61.38%</div>
+                    </div>
+                    <div style="background: #ffffff; padding: 0.5rem 0.75rem; border-radius: 6px; border: 1px solid #e2e8f0;">
+                        <span style="font-size: 0.75rem; color: #64748b; font-weight: 600; text-transform: uppercase;">Macro Contradiction Ratio</span>
+                        <div style="font-size: 1.25rem; font-weight: 700; color: #991b1b;">5.88%</div>
+                    </div>
+                    <div style="background: #ffffff; padding: 0.5rem 0.75rem; border-radius: 6px; border: 1px solid #e2e8f0;">
+                        <span style="font-size: 0.75rem; color: #64748b; font-weight: 600; text-transform: uppercase;">Macro Neutral Ratio</span>
+                        <div style="font-size: 1.25rem; font-weight: 700; color: #334155;">32.75%</div>
+                    </div>
+                    <div style="background: #ffffff; padding: 0.5rem 0.75rem; border-radius: 6px; border: 1px solid #e2e8f0;">
+                        <span style="font-size: 0.75rem; color: #64748b; font-weight: 600; text-transform: uppercase;">Mean Latency</span>
+                        <div style="font-size: 1.25rem; font-weight: 700; color: #0f172a;">16,392.44 ms</div>
+                    </div>
+                </div>
+                <p style="font-size: 0.88rem; color: #334155; line-height: 1.45; margin-bottom: 0.35rem;">
+                    Among the six tested combinations, Prompt B with sentence-level NLI achieved the highest macro entailment ratio, with a lower contradiction ratio than its Prompt A counterpart.
+                </p>
+                <p style="font-size: 0.82rem; color: #1e40af; font-weight: 600; margin: 0;">
+                    ✓ Highest observed entailment ratio and a better overall balance.
+                </p>
             </div>
             """,
             unsafe_allow_html=True,
         )
-    with m_col2:
+
+    with col_c6:
         st.markdown(
             """
-            <div class="kpi-card">
-                <div class="kpi-value">20 Summaries</div>
-                <div class="kpi-label">10 Prompt A • 10 Prompt B</div>
+            <div style="border: 2px solid #8b5cf6; border-radius: 8px; padding: 1.15rem; background-color: #faf5ff; height: 100%;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
+                    <span style="font-size: 1.15rem; font-weight: 700; color: #581c87;">C6: Prompt B + Hybrid Claim-Level NLI</span>
+                    <span style="background-color: #ede9fe; color: #6b21a8; font-size: 0.75rem; font-weight: 700; padding: 0.2rem 0.55rem; border-radius: 4px;">LOWEST CONTRADICTION</span>
+                </div>
+                <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 0.5rem; margin: 0.75rem 0;">
+                    <div style="background: #ffffff; padding: 0.5rem 0.75rem; border-radius: 6px; border: 1px solid #e2e8f0;">
+                        <span style="font-size: 0.75rem; color: #64748b; font-weight: 600; text-transform: uppercase;">Macro Entailment Ratio</span>
+                        <div style="font-size: 1.25rem; font-weight: 700; color: #166534;">42.64%</div>
+                    </div>
+                    <div style="background: #ffffff; padding: 0.5rem 0.75rem; border-radius: 6px; border: 1px solid #e2e8f0;">
+                        <span style="font-size: 0.75rem; color: #64748b; font-weight: 600; text-transform: uppercase;">Macro Contradiction Ratio</span>
+                        <div style="font-size: 1.25rem; font-weight: 700; color: #991b1b;">4.10%</div>
+                    </div>
+                    <div style="background: #ffffff; padding: 0.5rem 0.75rem; border-radius: 6px; border: 1px solid #e2e8f0;">
+                        <span style="font-size: 0.75rem; color: #64748b; font-weight: 600; text-transform: uppercase;">Macro Neutral Ratio</span>
+                        <div style="font-size: 1.25rem; font-weight: 700; color: #334155;">53.27%</div>
+                    </div>
+                    <div style="background: #ffffff; padding: 0.5rem 0.75rem; border-radius: 6px; border: 1px solid #e2e8f0;">
+                        <span style="font-size: 0.75rem; color: #64748b; font-weight: 600; text-transform: uppercase;">Mean Latency</span>
+                        <div style="font-size: 1.25rem; font-weight: 700; color: #0f172a;">3,645.25 ms</div>
+                    </div>
+                </div>
+                <p style="font-size: 0.88rem; color: #334155; line-height: 1.45; margin-bottom: 0.35rem;">
+                    Hybrid claim-level verification with Prompt B produced the lowest macro contradiction ratio, but also a substantially higher neutral ratio.
+                </p>
+                <p style="font-size: 0.82rem; color: #6b21a8; font-weight: 600; margin: 0;">
+                    ✓ Lowest observed contradiction ratio, with more neutral predictions.
+                </p>
             </div>
             """,
             unsafe_allow_html=True,
         )
-    with m_col3:
-        st.markdown(
-            """
-            <div class="kpi-card">
-                <div class="kpi-value">3 Strategies</div>
-                <div class="kpi-label">Whole-Doc • Sentence • Hybrid</div>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-    with m_col4:
-        st.markdown(
-            """
-            <div class="kpi-card">
-                <div class="kpi-value">60 Outputs</div>
-                <div class="kpi-label">100% Completed Offline</div>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
+
+    st.caption(
+        "**Note on Pilot Scope:** Findings are from a small exploratory pilot with five summaries per language in each condition "
+        "(pooled N=10 per condition, N=20 summaries total) and no human-annotated factuality gold standard. "
+        "Results do not claim statistical significance or universal superiority."
+    )
 
     st.markdown("---")
 
+    # -------------------------------------------------------------------------
     # Section 1: Conditions C1–C6 Visual Matrix
-    st.subheader("1. Experimental Conditions Matrix (C1–C6)")
+    # -------------------------------------------------------------------------
+    st.subheader("1. Experimental Conditions Comparison (C1–C6)")
     st.markdown(
-        "Macro-averaged Entailment, Neutral, and Contradiction ratios across all six experimental conditions (pooled $N=10$ per condition):"
+        "Macro label distribution across all six experimental conditions (N=10 summaries per condition). "
+        "Key conditions: **C4** (Highest Entailment: 61.38%) and **C6** (Lowest Contradiction: 4.10%)."
     )
 
     df_summary = pd.DataFrame(summary_table)
     df_all = df_summary[df_summary["language"] == "all"].copy()
 
+    condition_labels = {
+        "C1": "C1 — Prompt A / Whole-document",
+        "C2": "C2 — Prompt B / Whole-document",
+        "C3": "C3 — Prompt A / Sentence-level",
+        "C4": "C4 — Prompt B / Sentence-level",
+        "C5": "C5 — Prompt A / Hybrid",
+        "C6": "C6 — Prompt B / Hybrid",
+    }
+
     if not df_all.empty:
-        # Grouped Bar Chart of NLI Label Ratios
         chart_data = []
         for _, row in df_all.iterrows():
-            cid = f"{row['condition_id']}: {row['prompt_strategy'].upper()} / {row['verification_strategy'][:6]}"
+            cid = condition_labels.get(row["condition_id"], row["condition_id"])
             chart_data.append({"Condition": cid, "Metric": "Entailment Ratio", "Ratio": row["macro_entailment_ratio"]})
             chart_data.append({"Condition": cid, "Metric": "Neutral Ratio", "Ratio": row["macro_neutral_ratio"]})
             chart_data.append({"Condition": cid, "Metric": "Contradiction Ratio", "Ratio": row["macro_contradiction_ratio"]})
@@ -624,24 +654,24 @@ elif selected_page == "Research Results":
                 "Neutral Ratio": "#64748b",
                 "Contradiction Ratio": "#ef4444",
             },
-            title="Macro Label Distribution Across Conditions C1–C6",
-            height=360,
+            title="Macro Label Distribution Across Conditions C1–C6 (Highlighting C4: Best Balance & C6: Lowest Contradiction)",
+            height=380,
         )
         fig_ratios.update_layout(
-            margin=dict(l=10, r=10, t=35, b=10),
+            margin=dict(l=10, r=10, t=40, b=60),
             yaxis=dict(range=[0, 1.05], tickformat=".1%"),
+            xaxis=dict(tickangle=-15),
             legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
         )
         st.plotly_chart(fig_ratios, use_container_width=True)
 
+    # -------------------------------------------------------------------------
     # Section 2: Prompt A vs. Prompt B Comparison
+    # -------------------------------------------------------------------------
     st.markdown("---")
     st.subheader("2. Prompt A vs. Prompt B: Factuality Suppression")
     st.markdown(
-        """
-        Comparing **Prompt A (Standard)** and **Prompt B (Factuality-Aware Constrained)** across fine-grained verification strategies.
-        Prompt B reduced overall macro contradiction ratios, with the reduction driven primarily by the Hindi subset:
-        """
+        "Comparing standard (Prompt A) and factuality-aware (Prompt B) directives across fine-grained verification strategies:"
     )
 
     col_cp1, col_cp2 = st.columns([3, 2])
@@ -669,17 +699,19 @@ elif selected_page == "Research Results":
         st.markdown(
             """
             <div class="info-callout">
-                <strong>Key Findings:</strong>
+                <strong>Subgroup Findings:</strong>
                 <ul>
                     <li><strong>Overall Contradiction Suppression:</strong> Prompt B reduced macro contradiction ratios by <strong>-29.8% relative</strong> in sentence-level verification and <strong>-32.8% relative</strong> in hybrid claim-level verification.</li>
-                    <li><strong>Subgroup Variation:</strong> Contradiction reduction was most pronounced in Hindi (plunging by 73.2% in hybrid claims). English hybrid verification showed a slight rise (1.54% to 5.33%, reflecting 2 contradicted claims vs. 1).</li>
+                    <li><strong>Cross-Lingual Variation:</strong> Contradiction reduction was most pronounced in Hindi (plunging by <strong>-73.2% relative</strong> in hybrid claims). English hybrid verification showed a slight rise (<strong>1.54% to 5.33%</strong>, reflecting 2 contradicted claims vs. 1).</li>
                 </ul>
             </div>
             """,
             unsafe_allow_html=True,
         )
 
-    # Section 3: Verification Latency & Efficiency Profile
+    # -------------------------------------------------------------------------
+    # Section 3: Verification Architecture Latency Profile
+    # -------------------------------------------------------------------------
     st.markdown("---")
     st.subheader("3. Verification Architecture Throughput Profile")
     st.markdown("Mean CPU execution latency per summary across verification strategies:")
@@ -702,44 +734,47 @@ elif selected_page == "Research Results":
         fig_lat.update_layout(margin=dict(l=10, r=10, t=35, b=10))
         st.plotly_chart(fig_lat, use_container_width=True)
 
-    # Section 4: Comprehensive Experimental Table
+    # -------------------------------------------------------------------------
+    # Section 4: Comprehensive Experimental Table (Expandable)
+    # -------------------------------------------------------------------------
     st.markdown("---")
-    st.subheader("4. Complete Summary Table (All 18 Experimental Rows)")
-    display_cols = [
-        "condition_id",
-        "prompt_strategy",
-        "verification_strategy",
-        "language",
-        "total_evaluations",
-        "macro_mean_entailment_score",
-        "macro_entailment_ratio",
-        "macro_contradiction_ratio",
-        "macro_neutral_ratio",
-        "mean_latency_ms",
-    ]
-    df_table_display = df_summary[display_cols].copy()
-    df_table_display.columns = [
-        "Condition",
-        "Prompt",
-        "Strategy",
-        "Language",
-        "N",
-        "Mean Entail Score",
-        "Entail Ratio",
-        "Contra Ratio",
-        "Neutral Ratio",
-        "Mean Latency (ms)",
-    ]
-    st.dataframe(
-        df_table_display.style.format({
-            "Mean Entail Score": "{:.4f}",
-            "Entail Ratio": "{:.2%}",
-            "Contra Ratio": "{:.2%}",
-            "Neutral Ratio": "{:.2%}",
-            "Mean Latency (ms)": "{:,.1f}",
-        }),
-        use_container_width=True,
-    )
+    with st.expander("📊 Complete Experimental Results Table (All 18 Rows)", expanded=False):
+        st.markdown("Full results across all six conditions (C1–C6) broken down by Language (`all`, `en`, `hi`):")
+        display_cols = [
+            "condition_id",
+            "prompt_strategy",
+            "verification_strategy",
+            "language",
+            "total_evaluations",
+            "macro_mean_entailment_score",
+            "macro_entailment_ratio",
+            "macro_contradiction_ratio",
+            "macro_neutral_ratio",
+            "mean_latency_ms",
+        ]
+        df_table_display = df_summary[display_cols].copy()
+        df_table_display.columns = [
+            "Condition",
+            "Prompt",
+            "Strategy",
+            "Language",
+            "N",
+            "Mean Entail Score",
+            "Entail Ratio",
+            "Contra Ratio",
+            "Neutral Ratio",
+            "Mean Latency (ms)",
+        ]
+        st.dataframe(
+            df_table_display.style.format({
+                "Mean Entail Score": "{:.4f}",
+                "Entail Ratio": "{:.2%}",
+                "Contra Ratio": "{:.2%}",
+                "Neutral Ratio": "{:.2%}",
+                "Mean Latency (ms)": "{:,.1f}",
+            }),
+            use_container_width=True,
+        )
 
 st.markdown("---")
 st.caption("FactIndic Academic Evaluation Platform • Bennett University • Faculty Demonstration Interface")

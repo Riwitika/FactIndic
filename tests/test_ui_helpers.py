@@ -259,13 +259,17 @@ def test_benchmark_articles_and_evaluations_mapping():
 
 
 def test_faculty_dashboard_app_render():
-    """Verify that the redesigned faculty-facing Streamlit app renders both pages without error."""
+    """Verify that the polished faculty-facing Streamlit app renders both pages without error."""
     from streamlit.testing.v1 import AppTest
 
     # Test Article Demonstration page (default)
     at1 = AppTest.from_file("app.py", default_timeout=30)
     at1.run()
     assert not at1.exception, f"Exception on Article Demonstration default: {at1.exception}"
+
+    # Verify sidebar contains only navigation
+    nav = at1.sidebar.radio(key="nav_section")
+    assert nav.options == ["Article Demonstration", "Research Results"]
 
     # Test Prompt B selection
     prompt_radio = at1.radio(key="prompt_choice_radio")
@@ -280,9 +284,19 @@ def test_faculty_dashboard_app_render():
     # Test Research Results page
     at2 = AppTest.from_file("app.py", default_timeout=30)
     at2.run()
-    nav = at2.sidebar.radio(key="nav_section")
-    nav.set_value("Research Results").run()
+    nav2 = at2.sidebar.radio(key="nav_section")
+    nav2.set_value("Research Results").run()
     assert not at2.exception, f"Exception on Research Results page: {at2.exception}"
+
+    # Verify Key Research Finding content rendered
+    res_text = " ".join(m.value for m in at2.markdown)
+    assert "Key Research Finding — Best Observed Combination" in res_text
+    assert "C4: Prompt B + Sentence-Level NLI" in res_text
+    assert "C6: Prompt B + Hybrid Claim-Level NLI" in res_text
+    assert "61.38%" in res_text
+    assert "5.88%" in res_text
+    assert "42.64%" in res_text
+    assert "4.10%" in res_text
 
 
 
