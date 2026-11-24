@@ -33,7 +33,6 @@ from factindic.ui_helpers import (
 
 st.set_page_config(
     page_title="FactIndic — Research Demonstration",
-    page_icon="🔬",
     layout="wide",
     initial_sidebar_state="expanded",
 )
@@ -218,7 +217,7 @@ if selected_page == "Article Demonstration":
     eval_map = get_article_evaluations(article["article_id"], all_results)
 
     # Section A: Original Source Article Text
-    with st.expander(f"📄 Original Source Article: {article['title']} ({article['language_display']})", expanded=False):
+    with st.expander(f"Original Source Article: {article['title']} ({article['language_display']})", expanded=False):
         col_m1, col_m2, col_m3 = st.columns(3)
         with col_m1:
             st.markdown(f"**Article ID:** `{article['article_id']}`")
@@ -355,15 +354,15 @@ if selected_page == "Article Demonstration":
     st.subheader("Detailed Result Inspection")
 
     inspect_tabs = st.tabs([
-        "🔍 Hybrid Claim-by-Claim & BM25 Evidence",
-        "📄 Sentence-by-Sentence Breakdown",
-        "📑 Whole-Document Cross-Encoder Output",
+        "Hybrid Claim-by-Claim & BM25 Evidence",
+        "Sentence-by-Sentence Breakdown",
+        "Whole-Document Cross-Encoder Output",
     ])
 
     # Tab 1: Hybrid Claim-by-Claim & BM25 Evidence Inspection
     with inspect_tabs[0]:
         st.markdown("#### Atomic Factual Claims & Retrieved Passages")
-        with st.expander("ℹ️ How Hybrid Claim-Level Verification Works", expanded=False):
+        with st.expander("Methodology: Hybrid Claim-Level Verification", expanded=False):
             st.markdown(
                 r"""
                 - **Decision Policy:** Each atomic claim is evaluated against its top-3 retrieved BM25 passages. A claim is marked **Entailment** if $\max_k P(\text{entailment}) \ge 0.50$; otherwise **Contradiction** if $\max_k P(\text{contradiction}) \ge 0.50$; otherwise **Neutral**.
@@ -502,7 +501,7 @@ if selected_page == "Article Demonstration":
                     unsafe_allow_html=True,
                 )
             with col_w2:
-                with st.expander("ℹ️ Whole-Document Observation (Neutral Collapse)", expanded=False):
+                with st.expander("Observation: Whole-Document Neutral Collapse", expanded=False):
                     st.markdown(
                         "In whole-document verification, cross-attention over multi-thousand-token articles leads the model "
                         "to default to **Neutral** in 80% of benchmark cases (90% in Prompt A, 70% in Prompt B) "
@@ -534,25 +533,25 @@ elif selected_page == "Research Results":
     with col_c4:
         st.markdown(
             """
-            <div style="border: 2px solid #2563eb; border-radius: 8px; padding: 1.15rem; background-color: #f8fafc; height: 100%;">
+            <div style="border: 1px solid #3b82f6; border-radius: 6px; padding: 1.15rem; background-color: #f8fafc; height: 100%;">
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
                     <span style="font-size: 1.15rem; font-weight: 700; color: #1e3a8a;">C4: Prompt B + Sentence-Level NLI</span>
                     <span style="background-color: #dbeafe; color: #1e40af; font-size: 0.75rem; font-weight: 700; padding: 0.2rem 0.55rem; border-radius: 4px;">BEST BALANCE</span>
                 </div>
                 <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 0.5rem; margin: 0.75rem 0;">
-                    <div style="background: #ffffff; padding: 0.5rem 0.75rem; border-radius: 6px; border: 1px solid #e2e8f0;">
+                    <div style="background: #ffffff; padding: 0.5rem 0.75rem; border-radius: 4px; border: 1px solid #e2e8f0;">
                         <span style="font-size: 0.75rem; color: #64748b; font-weight: 600; text-transform: uppercase;">Macro Entailment Ratio</span>
                         <div style="font-size: 1.25rem; font-weight: 700; color: #166534;">61.38%</div>
                     </div>
-                    <div style="background: #ffffff; padding: 0.5rem 0.75rem; border-radius: 6px; border: 1px solid #e2e8f0;">
+                    <div style="background: #ffffff; padding: 0.5rem 0.75rem; border-radius: 4px; border: 1px solid #e2e8f0;">
                         <span style="font-size: 0.75rem; color: #64748b; font-weight: 600; text-transform: uppercase;">Macro Contradiction Ratio</span>
                         <div style="font-size: 1.25rem; font-weight: 700; color: #991b1b;">5.88%</div>
                     </div>
-                    <div style="background: #ffffff; padding: 0.5rem 0.75rem; border-radius: 6px; border: 1px solid #e2e8f0;">
+                    <div style="background: #ffffff; padding: 0.5rem 0.75rem; border-radius: 4px; border: 1px solid #e2e8f0;">
                         <span style="font-size: 0.75rem; color: #64748b; font-weight: 600; text-transform: uppercase;">Macro Neutral Ratio</span>
                         <div style="font-size: 1.25rem; font-weight: 700; color: #334155;">32.75%</div>
                     </div>
-                    <div style="background: #ffffff; padding: 0.5rem 0.75rem; border-radius: 6px; border: 1px solid #e2e8f0;">
+                    <div style="background: #ffffff; padding: 0.5rem 0.75rem; border-radius: 4px; border: 1px solid #e2e8f0;">
                         <span style="font-size: 0.75rem; color: #64748b; font-weight: 600; text-transform: uppercase;">Mean Latency</span>
                         <div style="font-size: 1.25rem; font-weight: 700; color: #0f172a;">16,392.44 ms</div>
                     </div>
@@ -561,7 +560,7 @@ elif selected_page == "Research Results":
                     Among the six tested combinations, Prompt B with sentence-level NLI achieved the highest macro entailment ratio, with a lower contradiction ratio than its Prompt A counterpart.
                 </p>
                 <p style="font-size: 0.82rem; color: #1e40af; font-weight: 600; margin: 0;">
-                    ✓ Highest observed entailment ratio and a better overall balance.
+                    Distinction: Highest observed entailment ratio and a better overall balance.
                 </p>
             </div>
             """,
@@ -571,25 +570,25 @@ elif selected_page == "Research Results":
     with col_c6:
         st.markdown(
             """
-            <div style="border: 2px solid #8b5cf6; border-radius: 8px; padding: 1.15rem; background-color: #faf5ff; height: 100%;">
+            <div style="border: 1px solid #64748b; border-radius: 6px; padding: 1.15rem; background-color: #f8fafc; height: 100%;">
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
-                    <span style="font-size: 1.15rem; font-weight: 700; color: #581c87;">C6: Prompt B + Hybrid Claim-Level NLI</span>
-                    <span style="background-color: #ede9fe; color: #6b21a8; font-size: 0.75rem; font-weight: 700; padding: 0.2rem 0.55rem; border-radius: 4px;">LOWEST CONTRADICTION</span>
+                    <span style="font-size: 1.15rem; font-weight: 700; color: #0f172a;">C6: Prompt B + Hybrid Claim-Level NLI</span>
+                    <span style="background-color: #e2e8f0; color: #334155; font-size: 0.75rem; font-weight: 700; padding: 0.2rem 0.55rem; border-radius: 4px;">LOWEST CONTRADICTION</span>
                 </div>
                 <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 0.5rem; margin: 0.75rem 0;">
-                    <div style="background: #ffffff; padding: 0.5rem 0.75rem; border-radius: 6px; border: 1px solid #e2e8f0;">
+                    <div style="background: #ffffff; padding: 0.5rem 0.75rem; border-radius: 4px; border: 1px solid #e2e8f0;">
                         <span style="font-size: 0.75rem; color: #64748b; font-weight: 600; text-transform: uppercase;">Macro Entailment Ratio</span>
                         <div style="font-size: 1.25rem; font-weight: 700; color: #166534;">42.64%</div>
                     </div>
-                    <div style="background: #ffffff; padding: 0.5rem 0.75rem; border-radius: 6px; border: 1px solid #e2e8f0;">
+                    <div style="background: #ffffff; padding: 0.5rem 0.75rem; border-radius: 4px; border: 1px solid #e2e8f0;">
                         <span style="font-size: 0.75rem; color: #64748b; font-weight: 600; text-transform: uppercase;">Macro Contradiction Ratio</span>
                         <div style="font-size: 1.25rem; font-weight: 700; color: #991b1b;">4.10%</div>
                     </div>
-                    <div style="background: #ffffff; padding: 0.5rem 0.75rem; border-radius: 6px; border: 1px solid #e2e8f0;">
+                    <div style="background: #ffffff; padding: 0.5rem 0.75rem; border-radius: 4px; border: 1px solid #e2e8f0;">
                         <span style="font-size: 0.75rem; color: #64748b; font-weight: 600; text-transform: uppercase;">Macro Neutral Ratio</span>
                         <div style="font-size: 1.25rem; font-weight: 700; color: #334155;">53.27%</div>
                     </div>
-                    <div style="background: #ffffff; padding: 0.5rem 0.75rem; border-radius: 6px; border: 1px solid #e2e8f0;">
+                    <div style="background: #ffffff; padding: 0.5rem 0.75rem; border-radius: 4px; border: 1px solid #e2e8f0;">
                         <span style="font-size: 0.75rem; color: #64748b; font-weight: 600; text-transform: uppercase;">Mean Latency</span>
                         <div style="font-size: 1.25rem; font-weight: 700; color: #0f172a;">3,645.25 ms</div>
                     </div>
@@ -597,8 +596,8 @@ elif selected_page == "Research Results":
                 <p style="font-size: 0.88rem; color: #334155; line-height: 1.45; margin-bottom: 0.35rem;">
                     Hybrid claim-level verification with Prompt B produced the lowest macro contradiction ratio, but also a substantially higher neutral ratio.
                 </p>
-                <p style="font-size: 0.82rem; color: #6b21a8; font-weight: 600; margin: 0;">
-                    ✓ Lowest observed contradiction ratio, with more neutral predictions.
+                <p style="font-size: 0.82rem; color: #334155; font-weight: 600; margin: 0;">
+                    Distinction: Lowest observed contradiction ratio, with more neutral predictions.
                 </p>
             </div>
             """,
@@ -738,7 +737,7 @@ elif selected_page == "Research Results":
     # Section 4: Comprehensive Experimental Table (Expandable)
     # -------------------------------------------------------------------------
     st.markdown("---")
-    with st.expander("📊 Complete Experimental Results Table (All 18 Rows)", expanded=False):
+    with st.expander("Complete Experimental Results Table (All 18 Rows)", expanded=False):
         st.markdown("Full results across all six conditions (C1–C6) broken down by Language (`all`, `en`, `hi`):")
         display_cols = [
             "condition_id",
