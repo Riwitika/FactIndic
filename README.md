@@ -1,6 +1,6 @@
 <div align="center">
 
-# 🇮🇳 FactIndic
+# FactIndic
 
 **Multilingual Factual Consistency & Hallucination Verification for Indic Summarization**
 
@@ -18,7 +18,7 @@ An NLP empirical research framework and verification engine measuring factual co
 
 <br />
 
-## 🌟 Overview
+## Overview
 
 Abstractive text summarization models frequently hallucinate facts or distort source relationships. While factual verification has been thoroughly benchmarked in high-resource English datasets, Indic languages (such as Hindi) remain vulnerable to semantic drift, gender/morphological inaccuracies, and cross-lingual translation artifacts.
 
@@ -30,28 +30,28 @@ Abstractive text summarization models frequently hallucinate facts or distort so
 
 ---
 
-## 🏗️ Verification Pipeline
+## Verification Pipeline
 
 ```mermaid
 flowchart TD
-    subgraph Corpus["📚 Corpus Ingestion"]
+    subgraph Corpus["Corpus Ingestion"]
         Src[Source Document<br/>English / Hindi]
         Sum[Abstractive Summary<br/>Model Generated]
     end
 
-    subgraph Extraction["🔍 Proposition Decomposition"]
+    subgraph Extraction["Proposition Decomposition"]
         Sum --> Splitter[Atomic Claim Extractor]
         Splitter --> C1[Claim 1]
         Splitter --> C2[Claim 2]
         Splitter --> Cn[Claim n]
     end
 
-    subgraph Inference["⚖️ NLI Verification Engine"]
+    subgraph Inference["NLI Verification Engine"]
         Src & C1 & C2 & Cn --> NLI[Multilingual mDeBERTa-v3<br/>XNLI-calibrated]
         NLI --> Probs["Entailment / Contradiction Distribution"]
     end
 
-    subgraph Metrics["📊 Factuality Ledger"]
+    subgraph Metrics["Factuality Ledger"]
         Probs --> FactualReport[Factual Consistency Matrix]
         Probs --> HallucinationAudit[Hallucination Error Taxonomy]
     end
@@ -64,7 +64,7 @@ flowchart TD
 
 ---
 
-## 🔬 Experimental Factorial Setup
+## Experimental Factorial Setup
 
 - **Source Invariance:** Identical matched source documents evaluated across both English and Hindi.
 - **Generation Model:** Cohere Command A+ (`command-a-plus-05-2026`)
@@ -74,7 +74,7 @@ flowchart TD
 
 ---
 
-## 💻 Tech Stack
+## Tech Stack
 
 - **Frameworks:** Python 3.11, PyTorch, Transformers, Datasets.
 - **LLM APIs:** Cohere Python SDK.
@@ -83,7 +83,7 @@ flowchart TD
 
 ---
 
-## 🚀 Quickstart
+## Quickstart
 
 ### 1. Installation
 
