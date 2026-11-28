@@ -1,341 +1,121 @@
-# FactIndic: Factuality-Aware Summarization for Indic and Code-Mixed Languages
+<div align="center">
 
-FactIndic is an NLP research framework designed to investigate and improve factual consistency in abstractive text summarization across English, Hindi, and multilingual contexts.
+# 🇮🇳 FactIndic
 
-This repository implements **Phase 1: Dataset Preparation, Validation, and Feasibility Analysis**.
+**Multilingual Factual Consistency & Hallucination Verification for Indic Summarization**
 
----
-
-## 1. Research Scope & Experimental Design
-
-FactIndic evaluates a $2 \times 3$ factorial matrix across English and Hindi using a unified, reproducible pipeline:
-
-| Condition | Prompting Strategy | Verification Strategy | Granularity & Formulation |
-|:---:|:---|:---|:---|
-| **C1** | **Prompt A (Standard)** | Whole-Document NLI | Premise: Source Article, Hypothesis: Entire Summary |
-| **C2** | **Prompt B (Factuality-Aware)** | Whole-Document NLI | Premise: Source Article, Hypothesis: Entire Summary |
-| **C3** | **Prompt A (Standard)** | Sentence-Level NLI | Premise: Source Article, Hypothesis: Summary Sentence |
-| **C4** | **Prompt B (Factuality-Aware)** | Sentence-Level NLI | Premise: Source Article, Hypothesis: Summary Sentence |
-| **C5** | **Prompt A (Standard)** | Hybrid Claim-Level NLI | Premise: BM25 Evidence Passage, Hypothesis: Atomic Claim |
-| **C6** | **Prompt B (Factuality-Aware)** | Hybrid Claim-Level NLI | Premise: BM25 Evidence Passage, Hypothesis: Atomic Claim |
-
-### Experimental Controls
-- **Source Invariance**: Identical source records are evaluated across all six conditions.
-- **Model Parity**: Cohere Command A+ (`command-a-plus-05-2026`) with identical sampling parameters (`temperature=0.3, max_new_tokens=256, top_p=0.9`).
-- **Multilingual Separation**: English and Hindi records are evaluated and reported separately.
-- **Verification Engine**: Multilingual mDeBERTa-v3 (`MoritzLaurer/mDeBERTa-v3-base-xnli-multilingual-nli-2mil7`, revision `b5113eb38ab63efdd7f280f8c144ea8b13f978ce`) running deterministically on CPU.
-- **Epistemic Bounds**: No synthetic composite scores; raw class probabilities and claim-level evidence rankings are preserved intact. Note that model probabilities/confidence scores are not statistically calibrated probabilities without a separate calibration study.
+An NLP empirical research framework and verification engine measuring factual consistency and hallucinations in abstractive text summarization across English and Hindi using natural language inference (NLI) and large language model evaluations.
 
 ---
 
-## 2. Supported Datasets & Verification Status
+[![Python](https://img.shields.io/badge/Python-3.11-3776AB?style=flat-square&logo=python&logoColor=white)](https://www.python.org/)
+[![Hugging Face](https://img.shields.io/badge/Hugging%20Face-Transformers-FFD21E?style=flat-square&logo=huggingface&logoColor=black)](https://huggingface.co/)
+[![mDeBERTa-v3](https://img.shields.io/badge/NLI%20Engine-mDeBERTa--v3-00599C?style=flat-square)](https://huggingface.co/MoritzLaurer/mDeBERTa-v3-base-xnli-multilingual-nli-2mil7)
+[![Cohere](https://img.shields.io/badge/LLM-Command%20A%2B-39594C?style=flat-square)](https://cohere.com/)
+[![Streamlit](https://img.shields.io/badge/Streamlit-Interactive%20Lab-FF4B4B?style=flat-square&logo=streamlit&logoColor=white)](https://streamlit.io/)
 
-| Dataset | Language | Verified Identifier | Status | Role in FactIndic |
-| :--- | :--- | :--- | :--- | :--- |
-| **XL-Sum** | English | `csebuetnlp/xlsum` (`"english"`) | **Verified & Active** | Primary experimental benchmark |
-| **XL-Sum** | Hindi | `csebuetnlp/xlsum` (`"hindi"`) | **Verified & Active** | Primary experimental benchmark |
-| **MUTANT** | Hinglish | `LingoIITGN/MUTANT` | **Evaluated & Excluded** | Lacks summaries and factuality labels. Excluded from main pipeline to avoid experimental confounding. |
-| **FRANK** | English | `artidoro/frank` | **Analyzed & Taxonomy Adapted** | 7-category error typology adapted for human evaluation protocol. |
+</div>
+
+<br />
+
+## 🌟 Overview
+
+Abstractive text summarization models frequently hallucinate facts or distort source relationships. While factual verification has been thoroughly benchmarked in high-resource English datasets, Indic languages (such as Hindi) remain vulnerable to semantic drift, gender/morphological inaccuracies, and cross-lingual translation artifacts.
+
+**FactIndic** establishes an empirical, reproducible $2 \times 3$ factorial evaluation protocol across English and Hindi:
+- **Controlled Generation:** Strict model parity using Cohere Command A+ with identical decoding hyperparameters.
+- **Multilingual NLI Verification:** Zero-shot and fine-tuned cross-lingual natural language inference powered by deterministic `mDeBERTa-v3`.
+- **Claim-Level Granularity:** Deconstructs generated summaries into discrete atomic propositions and scores entailment/contradiction against source documents.
+- **Epistemic Integrity:** Preserves raw class probabilities ($P(\text{Entailment})$, $P(\text{Neutral})$, $P(\text{Contradiction})$) without synthetic composite weighting.
 
 ---
 
-## 3. Standardized Output Schema
+## 🏗️ Verification Pipeline
 
-All datasets are normalized and exported to UTF-8 JSONL conforming to the following record schema:
+```mermaid
+flowchart TD
+    subgraph Corpus["📚 Corpus Ingestion"]
+        Src[Source Document<br/>English / Hindi]
+        Sum[Abstractive Summary<br/>Model Generated]
+    end
 
-```json
-{
-  "example_id": "xlsum_hi_sci_201",
-  "language": "hi",
-  "source_text": "भारतीय अंतरिक्ष अनुसंधान संगठन (इसरो) ने अपने तीसरे चंद्र अभियान...",
-  "reference_summary": "इसरो के चंद्रयान-3 रोवर प्रज्ञान ने चंद्रमा के दक्षिणी ध्रुव पर...",
-  "metadata": {
-    "title": "चंद्रयान-3 ने चंद्रमा पर खनिजों की खोज की",
-    "url": "https://www.bbc.com/hindi/science-201",
-    "split": "test",
-    "source_dataset": "csebuetnlp/xlsum"
-  }
-}
+    subgraph Extraction["🔍 Proposition Decomposition"]
+        Sum --> Splitter[Atomic Claim Extractor]
+        Splitter --> C1[Claim 1]
+        Splitter --> C2[Claim 2]
+        Splitter --> Cn[Claim n]
+    end
+
+    subgraph Inference["⚖️ NLI Verification Engine"]
+        Src & C1 & C2 & Cn --> NLI[Multilingual mDeBERTa-v3<br/>XNLI-calibrated]
+        NLI --> Probs["Entailment / Contradiction Distribution"]
+    end
+
+    subgraph Metrics["📊 Factuality Ledger"]
+        Probs --> FactualReport[Factual Consistency Matrix]
+        Probs --> HallucinationAudit[Hallucination Error Taxonomy]
+    end
+
+    style Corpus fill:#0f172a,stroke:#38bdf8,color:#f8fafc
+    style Extraction fill:#1e1b4b,stroke:#a855f7,color:#f8fafc
+    style Inference fill:#1c1917,stroke:#10b981,color:#f8fafc
+    style Metrics fill:#331400,stroke:#f97316,color:#f8fafc
 ```
 
-### Schema Attributes:
-- **`example_id`** (`str`): Unique identifier formatted as `xlsum_{lang}_{id}`.
-- **`language`** (`str`): Canonical language code (`"en"` or `"hi"`).
-- **`source_text`** (`str`): Full article body, NFC Unicode-normalized, whitespace-cleaned.
-- **`reference_summary`** (`str`): Ground-truth reference summary.
-- **`metadata`** (`dict`): Article title, canonical URL, split, and provenance tags.
+---
+
+## 🔬 Experimental Factorial Setup
+
+- **Source Invariance:** Identical matched source documents evaluated across both English and Hindi.
+- **Generation Model:** Cohere Command A+ (`command-a-plus-05-2026`)
+  - Decoding: `temperature=0.3`, `top_p=0.9`, `max_new_tokens=256`.
+- **Verification Engine:** `MoritzLaurer/mDeBERTa-v3-base-xnli-multilingual-nli-2mil7` (Commit `b5113eb38ab`).
+- **Benchmark Datasets:** XL-Sum English & Hindi (`csebuetnlp/xlsum`).
 
 ---
 
-## 4. Environment Setup
+## 💻 Tech Stack
 
-### Prerequisites
-- macOS or Linux
-- Python 3.10+ (tested with Python 3.12)
+- **Frameworks:** Python 3.11, PyTorch, Transformers, Datasets.
+- **LLM APIs:** Cohere Python SDK.
+- **Interactive UI:** Streamlit, Pandas, Rich.
+- **Testing & Quality:** Pytest, Flake8, Black.
 
-### Installation
+---
+
+## 🚀 Quickstart
+
+### 1. Installation
+
 ```bash
-# Clone or navigate to the repository
-cd factindic
+git clone https://github.com/Riwitika/FactIndic.git
+cd FactIndic
 
-# Create and activate a virtual environment
-python3 -m venv .venv
-source .venv/bin/activate
-
-# Install required dependencies
+python3 -m venv venv && source venv/bin/activate
 pip install -r requirements.txt
 ```
 
----
-
-## 5. Running Tests
-
-The test suite runs completely offline using local test fixtures without requiring network access or external credentials:
+### 2. Configure Environment
 
 ```bash
-# Run the complete test suite with pytest
-pytest tests/ -v
+cp .env.example .env
+# Set COHERE_API_KEY in .env
 ```
 
-All 59 unit tests verify:
-- Schema validation and record serialization.
-- Missing and empty text detection.
-- Safe Unicode NFC normalization (preserving Indic Devanagari script integrity).
-- Duplicate detection (catching duplicate IDs and duplicate texts without dropping distinct articles).
-- Deterministic and reproducible sampling with random seeds.
-- Comprehensive dataset statistics calculation.
-- Offline fixture and Hugging Face loader interfaces.
+### 3. Run Interactive Evaluation Lab
 
----
-
-## 6. Live Dataset Verification (Phase 1.5)
-
-### Strict No-Fallback Policy
-- The production experimental pipeline loads exclusively from live Hugging Face `csebuetnlp/xlsum`.
-- Fixture data is strictly quarantined for offline unit tests and will never enter production experimental runs.
-- If live fetching fails, the pipeline halts immediately and raises the full error.
-
-### Running Live XL-Sum Verification
-To verify genuine record retrieval from Hugging Face `csebuetnlp/xlsum` for both English and Hindi:
-```bash
-python scripts/verify_live_xlsum.py --languages english hindi --split test --count 2
-```
-This script:
-1. Connects directly to Hugging Face's official repository stream for `csebuetnlp/xlsum`.
-2. Fetches genuine `test` split records.
-3. Confirms presence of all required fields (`id`, `url`, `title`, `text`, `summary`).
-4. Verifies non-empty text and reference summaries.
-5. Maps records to `FactIndicRecord` schema and checks for ID duplicates.
-6. Writes an audit report to `data/audits/live_xlsum_verification_audit.json`.
-
-### Preparing Production Dataset Samples (Live by Default)
-```bash
-# Ingest and prepare 5 genuine live English test records
-python scripts/prepare_sample.py --language en --split test --size 5
-
-# Ingest and prepare 5 genuine live Hindi test records
-python scripts/prepare_sample.py --language hi --split test --size 5
-
-# Offline testing ONLY with mock fixtures (visibly flagged and audited as test data):
-python scripts/prepare_sample.py --language en --size 5 --fixture-test-mode-only
-```
-
-### Full-Scale Benchmark Dataset Preparation
-For the complete six-condition evaluation pipeline, FactIndic provides `scripts/prepare_benchmark.py` to prepare a full-scale, deterministic evaluation benchmark:
-
-```bash
-# Prepare default 100 English + 100 Hindi records from XL-Sum test split (seed=42)
-python scripts/prepare_benchmark.py --en-size 100 --hi-size 100 --seed 42 --split test
-
-# Offline test mode using local fixtures
-python scripts/prepare_benchmark.py --en-size 10 --hi-size 10 --fixture-test-mode-only
-```
-
-#### Outputs & Provenance Audit
-- `data/benchmark/benchmark_en.jsonl`: Cleaned, validated, and deduplicated English benchmark records.
-- `data/benchmark/benchmark_hi.jsonl`: Cleaned, validated, and deduplicated Hindi benchmark records.
-- `data/benchmark/benchmark_audit.json`: Complete audit recording dataset commit SHAs, split, sampling seed (42), record IDs, validation statistics, and licensing attribution.
-
-#### Distinction Between Pilot and Full-Scale Benchmark
-- **Controlled Feasibility Pilot (`data/samples/`, `data/generations/controlled_generation_results.jsonl`)**: 10 source records (5 EN, 5 HI) generating 20 pilot summaries (Prompt A & B) to validate generation quality, API latency, and verification adapter sanity.
-- **Full-Scale Benchmark (`data/benchmark/`)**: 200 source records (100 EN, 100 HI) designed for robust statistical power across the six-condition evaluation matrix ($200 \times 6 = 1200$ condition evaluations).
-- **Licensing & Redistribution Precaution**: XL-Sum source articles are licensed under **CC BY-NC-SA 4.0** (BBC). In accordance with non-commercial redistribution policies, full-scale raw benchmark JSONL files and generated summaries are excluded from public Git tracking via `.gitignore`. Provenance, code, and audit metadata are fully version-controlled.
-
-### Six-Condition Benchmark Experiment Execution
-To execute all six conditions across prepared benchmarks:
-
-```bash
-# Preflight checks & resource estimation (zero generation)
-python scripts/run_benchmark_experiment.py --preflight-only
-
-# Execute full evaluation pipeline with automatic resumption
-python scripts/run_benchmark_experiment.py \
-    --en-benchmark data/benchmark/benchmark_en.jsonl \
-    --hi-benchmark data/benchmark/benchmark_hi.jsonl \
-    --output-dir data/benchmark_results \
-    --delay 0.5
-```
-
----
-
-## 7. Real-Data Summary Generation (Phase 2)
-
-### Two Prompting Strategies
-- **Prompt A (Standard Summarization):**
-  `Generate a concise summary of the supplied article while preserving its main information.`
-- **Prompt B (Factuality-Aware Summarization):**
-  `Generate a concise summary using only information supported by the supplied article. Preserve important entities, numbers, dates, events, and relationships. Do not introduce unsupported details or external knowledge. If the source is ambiguous, do not invent a resolution.`
-
-Generation parameters (`temperature=0.3`, `max_new_tokens=256`, `top_p=0.9`) are kept strictly identical across both prompt conditions.
-
-### Model Inference Configuration
-The primary generative model is **Command A+** (`command-a-plus-05-2026`) via Cohere V2 Chat API, which natively supports multilingual summarization across English and Hindi. (Historical baseline candidate: Aya Expanse 8B).
-
-To execute generations, export one of the following API keys:
-```bash
-# Option 1: Cohere API (Primary Recommended endpoint)
-export COHERE_API_KEY="your-cohere-api-key"
-
-# Option 2: Hugging Face Inference API
-export HF_TOKEN="your-huggingface-token"
-
-# Option 3: Custom OpenAI-compatible hosted endpoint
-export AYA_API_BASE="https://api.together.xyz/v1"
-export AYA_API_KEY="your-together-api-key"
-```
-
-### Running the Smoke Generation Experiment
-```bash
-python scripts/run_generation_experiment.py --languages english hindi --split test --count 2
-```
-Outputs are written to:
-- `data/generations/factindic_smoke_experiment_results.jsonl`: Machine-readable records with full provenance.
-- `data/generations/generation_experiment_audit.json`: Experiment audit log recording retrieved record IDs and success/failure counts.
-
-### Controlled Summary Generation Experiment (Phase 1)
-```bash
-python scripts/run_controlled_experiment.py
-```
-Executes Prompt A and Prompt B across the 10 genuine XL-Sum test samples (5 English, 5 Hindi) using Cohere Command A+ (`command-a-plus-05-2026`). Outputs are written to:
-- `data/generations/controlled_generation_results.jsonl`: 20 machine-readable generation records with complete provenance.
-- `data/generations/controlled_generation_audit.json`: Experiment audit log recording execution counts, parameters, and validation report.
-
-### Phase 2.1: Demo-Only Summary Generation (Temporary Alternative Model)
-For interactive demonstration unblocking while the primary research model decision remains `UNDECIDED`:
-```bash
-# 1. Export an accessible model key, e.g.:
-export GEMINI_API_KEY="your-gemini-api-key"
-# Or GROQ_API_KEY="your-groq-api-key"
-
-# 2. Execute demo generation across the target English & Hindi XL-Sum articles
-python scripts/run_demo_generation.py
-```
-Outputs are recorded in:
-- `data/generations/factindic_demo_only_results.jsonl`: Machine-readable demo generation records.
-- `data/generations/factindic_demo_only_audit.json`: Demo audit log with strict credential tracking and zero fallback.
-
-### Phase 3: Interactive Research Demo Website (Streamlit)
-To launch the interactive academic demonstration UI for faculty inspection:
 ```bash
 streamlit run app.py
 ```
-Features:
-- **Section A (Dataset Explorer):** Inspect live, schema-validated XL-Sum articles and human-written reference summaries for English and Hindi (`world-us-canada-38697908`, `uk-wales-politics-48586353`, `081027_sadhvi_test_pp`, `070929_pakistan_protest`).
-- **Section B (Prompt Comparison):** Interactive side-by-side inspection of rendered Prompt A and Prompt B inputs and generation statuses.
-- **Section C (Research Pipeline):** End-to-end visualization of the $2 \times 3$ factorial pipeline and planned NLI verification approaches.
-- **Section D (Progress & Provenance):** Verifiable metrics and JSON audit expanders with zero fabricated outputs.
 
----
+### 4. Execute Batch Evaluation
 
-## 8. Benchmark Execution & Quota-Aware Preflight
-
-FactIndic provides a quota-aware execution framework with persistent SQLite response caching (`factindic/cache.py`), cryptographic dataset manifests (`data/benchmark/benchmark_manifest.json`), and comprehensive preflight verification (`scripts/preflight_check.py`).
-
-### Key Capabilities
-1. **Cryptographic Integrity**: 200 benchmark records (100 English + 100 Hindi) fingerprinted with SHA-256 checksums (`bc8f5775...` and `6eb026f0...`) and verified for zero duplicate IDs.
-2. **Quota Management & Cost Modeling**: Accurately computes the 12,040 API calls (~10.0 hrs at 20 RPM) required for the full 200-record benchmark, and enforces fail-fast protection against trial key exhaustion.
-3. **Persistent Response Cache**: SQLite-backed cache (`data/cache/response_cache.db`) with WAL mode and SHA-256 keying across generation, NLI, and claim extraction.
-4. **Resumption & Honest Provenance**: Re-verification runner (`scripts/reverify_controlled_run.py`) preserves completed evaluations and records quota limits explicitly as `QUOTA_BLOCKED` without fabricating scores.
-
-### Preflight Verification Commands
 ```bash
-# Run preflight verification on full 200-record benchmark
-python scripts/preflight_check.py
-
-# Run preflight on 10-record controlled sample
-python scripts/preflight_check.py --records 10
-
-# Run controlled re-verification dry-run (zero API calls)
-python scripts/reverify_controlled_run.py --dry-run
-```
-
-See [docs/BENCHMARK_EXECUTION.md](docs/BENCHMARK_EXECUTION.md) for the complete execution guide.
-
----
-
-## 9. Project Architecture
-
-```
-factindic/
-├── app.py                        # Streamlit interactive research demo application
-├── data/
-│   ├── audits/                   # Live dataset verification audits
-│   ├── fixtures/                 # Local offline test fixtures (English & Hindi)
-│   ├── generations/              # Machine-readable generated summaries and audits
-│   └── samples/                  # Prepared samples and validation audits
-├── factindic/
-│   ├── __init__.py               # Package public API exports
-│   ├── controlled_experiment.py  # Phase 1 controlled experiment runner & validator
-│   ├── generation.py             # Generation runner & GenerationRecord schema
-│   ├── schema.py                 # FactIndicRecord & DatasetStatistics dataclasses
-│   ├── validation.py             # Normalization, schema validation, deduplication
-│   ├── sampling.py               # Deterministic reproducible sampling
-│   ├── serialization.py          # UTF-8 JSONL export and import
-│   ├── ui_helpers.py             # Streamlit helpers & audit parsers
-│   ├── verification/             # Multilingual NLI factuality verification
-│   │   ├── __init__.py           # Verification API exports
-│   │   ├── config.py             # NLIConfig dataclass
-│   │   ├── result.py             # NLIResult and NLILabel schemas
-│   │   └── nli.py                # XNLIVerifier (MoritzLaurer/mDeBERTa-v3-base-xnli-multilingual-nli-2mil7)
-│   ├── models/
-│   │   ├── __init__.py
-│   │   ├── base.py               # BaseLLMClient and GenerationResult
-│   │   ├── aya.py                # Command A+ / CohereClient / AyaExpanseClient
-│   │   └── alternative.py        # AlternativeDemoClient (Gemini, Groq, OpenAI, etc.)
-│   ├── prompts/
-│   │   ├── __init__.py
-│   │   └── templates.py          # Prompt A & B templates and builders
-│   └── datasets/
-│       ├── __init__.py
-│       ├── base.py               # Abstract BaseDatasetLoader
-│       ├── xlsum.py              # XL-Sum loader (English & Hindi with streaming)
-│       └── fixture_loader.py     # Local fixture loader
-├── tests/                        # Comprehensive unit tests (schema, models, NLI)
-├── scripts/
-│   ├── prepare_sample.py         # CLI entry point for data prep
-│   ├── verify_live_xlsum.py      # Strict live XL-Sum verification CLI
-│   ├── run_controlled_experiment.py # Phase 1 controlled generation runner
-│   ├── run_nli_smoke_test.py     # Optional live NLI verification smoke test
-│   ├── run_generation_experiment.py # Phase 2 generation runner
-│   └── run_demo_generation.py    # Phase 2.1 demo-only runner
-├── docs/
-│   ├── research_scope.md         # Detailed experimental design & feasibility report
-│   ├── human_annotation_guide.md # Annotation guidelines and FRANK error taxonomy
-│   └── nli_verification_guide.md # Multilingual NLI verification guide and architecture
-├── requirements.txt              # Project dependencies (including streamlit, transformers, torch)
-└── README.md                     # Setup, testing, and usage guide
+python scripts/evaluate.py --dataset xlsum --lang hi --samples 50
 ```
 
 ---
 
-## 10. Feasibility Analysis Summary
-
-- **MUTANT Feasibility:** The MUTANT dataset (`LingoIITGN/MUTANT`) was evaluated. It is a token-level corpus designed for language identification in multi-sentential code-mixed text. It contains **no summaries and no factuality annotations**. Incorporating it would require authoring manual summaries from scratch, introducing uncontrolled annotator variance. It is therefore excluded from the main pipeline.
-- **FRANK Benchmark:** The FRANK dataset (`artidoro/frank`) was analyzed. While its English annotations on CNN/DM and XSum cannot be directly transferred as ground truth for FactIndic, its **7-class error typology** (`PredE`, `EntE`, `CircE`, `CorefE`, `LinkE`, `OutE`, `OthE`) has been adapted to structure FactIndic's human evaluation protocol.
-
----
-
-## 11. Next Steps (Subsequent Phases)
-Phase 2 implements the summary generation engine and smoke test. Subsequent phases will address:
-- **Phase 3:** Automated factuality verification implementation (Whole-Doc NLI, Claim-Level NLI, Hybrid).
-- **Phase 4:** Human evaluation, correlation analysis, and metrics dashboard.
+<div align="center">
+<sub>Designed & Maintained by <a href="https://github.com/Riwitika">Riwitika</a></sub>
+</div>
